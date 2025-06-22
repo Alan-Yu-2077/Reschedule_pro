@@ -1,18 +1,22 @@
 package main
 
 import (
-    "reschedule-program/middleware"
-    "reschedule-program/routes"
+	"reschedule-program/database"
+	"reschedule-program/middleware"
+	"reschedule-program/routes"
 
-    "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-    r := gin.Default()
-    r.Use(middleware.CORS())
+	// Initialize database
+	database.InitDB()
 
-    routes.AuthRoutes(r)
-    routes.ScheduleRoutes(r)
+	r := gin.Default()
+	r.Use(middleware.CORS())
 
-    r.Run(":8080")
+	routes.AuthRoutes(r)
+	routes.ScheduleRoutes(r)
+
+	r.Run(":8080")
 }

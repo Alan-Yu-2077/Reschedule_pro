@@ -34,9 +34,13 @@
         <label>Course Name:</label>
         <input v-model="newCourse.name" placeholder="e.g. Math" />
         <label>Start Week:</label>
-        <input type="number" v-model="newCourse.startWeek" />
+        <select v-model="newCourse.startWeek" class="week-select">
+          <option v-for="week in 100" :key="week" :value="week">Week {{ week }}</option>
+        </select>
         <label>End Week:</label>
-        <input type="number" v-model="newCourse.endWeek" />
+        <select v-model="newCourse.endWeek" class="week-select">
+          <option v-for="week in 100" :key="week" :value="week">Week {{ week }}</option>
+        </select>
         <div class="dialog-actions">
           <button @click="confirmCourse">Confirm</button>
           <button @click="closeDialog">Cancel</button>
@@ -70,13 +74,26 @@ const submitSchedule = () => {
     return;
   }
 
+  // 收集所有课程信息，包括周数
+  const courses = [];
+  for (let row = 0; row < schedule.value.length; row++) {
+    for (let col = 0; col < schedule.value[row].length; col++) {
+      const cell = schedule.value[row][col];
+      if (cell && cell.name) {
+        courses.push({
+          name: cell.name,
+          day: col,
+          slot: row,
+          startWeek: cell.startWeek,
+          endWeek: cell.endWeek
+        });
+      }
+    }
+  }
+
   const payload = {
     className: className.value,
-    weeks: {
-      1: schedule.value.map(row =>
-        row.map(cell => (cell ? cell.name : ""))
-      )
-    }
+    courses: courses
   };
 
   uni.request({
@@ -230,6 +247,16 @@ const confirmCourse = () => {
   margin-top: 4px;
   box-sizing: border-box;
   font-family: 'Patrick Hand', cursive;
+}
+
+.week-select {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  box-sizing: border-box;
+  font-family: 'Patrick Hand', cursive;
+  border: 1px solid #ccc;
+  border-radius: 2px;
 }
 
 .dialog-actions {

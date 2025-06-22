@@ -1,46 +1,61 @@
 package routes
 
 import (
-    "github.com/gin-gonic/gin"
-    "reschedule-program/models"
-    "reschedule-program/store"
+	"reschedule-program/services"
+
+	"github.com/gin-gonic/gin"
+	"reschedule-program/models"
 )
 
 func AuthRoutes(r *gin.Engine) {
-    r.POST("/register", func(c *gin.Context) {
-        var user models.User
-        if err := c.ShouldBindJSON(&user); err != nil || user.Username == "" || user.Password == "" {
-            c.JSON(400, gin.H{"msg": "Invalid input"})
-            return
-        }
+	userService := services.NewUserService()
 
-        store.UserMutex.Lock()
-        defer store.UserMutex.Unlock()
+	r.POST("/register", func(c *gin.Context) {
+		var user struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		
+		if err := c.ShouldBindJSON(&user); err != nil || user.Username == "" || user.Password == "" {
+			c.JSON(400, gin.H{"msg": "Invalid input"})
+			return
+		}
 
-        if _, exists := store.Users[user.Username]; exists {
-            c.JSON(400, gin.H{"msg": "User already exists"})
-            return
-        }
+		if userService.UserExists(user.Username) {
+			c.JSON(400, gin.H{"msg": "User already exists"})
+			return
+		}
 
-        store.Users[user.Username] = user.Password
-        c.JSON(200, gin.H{"msg": "Register success"})
-    })
+		newUser := &models.User{
+			Username: user.Username,
+			Password: user.Password,
+		}
 
-    r.POST("/login", func(c *gin.Context) {
-        var user models.User
-        if err := c.ShouldBindJSON(&user); err != nil {
-            c.JSON(400, gin.H{"msg": "Invalid input"})
-            return
-        }
+		if err := userService.CreateUser(newUser); err != nil {
+			c.JSON(500, gin.H{"msg": "Failed to create user"})
+			return
+		}
 
-        store.UserMutex.RLock()
-        defer store.UserMutex.RUnlock()
+		c.JSON(200, gin.H{"msg": "Register success"})
+	})
 
-        if pwd, ok := store.Users[user.Username]; !ok || pwd != user.Password {
-            c.JSON(401, gin.H{"msg": "Wrong username or password"})
-            return
-        }
+	r.POST("/login", func(c *gin.Context) {
+		var user struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		
+		if err := c.ShouldBindJSON(&user); err != nil {
+			c.JSON(400, gin.H{"msg": "Invalid input"})
+			return
+		}
 
-        c.JSON(200, gin.H{"msg": "Login success"})
-    })
+		dbUser, err := userService.GetUserByUsername(user.Username)
+		if err != nil || dbUser.Password != user.Password {
+			c.JSON(401, gin.H{"msg": "Wrong username or password"})
+			return
+		}
+
+		c.JSON(200, gin.H{"msg": "Login success"})
+	})
 }

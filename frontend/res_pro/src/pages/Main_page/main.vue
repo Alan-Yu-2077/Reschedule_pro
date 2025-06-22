@@ -71,7 +71,9 @@ const selectClass = (cls) => {
 
 const router = useRouter();
 const goImportPage = () => {
-  router.push('/pages/Main_page/register_class');
+  uni.navigateTo({
+    url: '/pages/Main_page/register_class'
+  });
 };
 
 const currentWeek = ref(1);
@@ -83,6 +85,8 @@ const nextWeek = () => {
 };
 
 const loadSchedule = () => {
+  if (!currentClass.value) return;
+  
   uni.request({
     url: 'http://localhost:8080/schedule/' + currentClass.value,
     method: 'GET',
