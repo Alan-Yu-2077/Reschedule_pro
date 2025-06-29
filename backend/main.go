@@ -16,7 +16,7 @@ func main() {
 	r.Use(middleware.CORS())
 
 	routes.AuthRoutes(r)
-	routes.ScheduleRoutes(r)
+	routes.SetupScheduleRoutes(r)
 
 	r.Run(":8080")
 }

@@ -62,6 +62,30 @@ const currentClass = ref('');
 const logs = ref([]);
 const scheduleData = ref([]);
 
+// 加载班级列表
+const loadClasses = async () => {
+  try {
+    const response = await uni.request({
+      url: 'http://localhost:8080/api/schedule/classes',
+      method: 'GET'
+    });
+
+    if (response.statusCode === 200) {
+      classList.value = response.data.classes.map(cls => cls.name);
+      console.log('Classes loaded:', classList.value);
+      
+      // 如果有班级，选择第一个
+      if (classList.value.length > 0 && !currentClass.value) {
+        currentClass.value = classList.value[0];
+        loadSchedule();
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load classes:', error);
+    uni.showToast({ title: 'Failed to load classes', icon: 'none' });
+  }
+};
+
 const selectClass = (cls) => {
   currentClass.value = cls;
   logs.value.push(`Switched to class: ${cls}`);
@@ -79,27 +103,31 @@ const goImportPage = () => {
 const currentWeek = ref(1);
 const prevWeek = () => {
   if (currentWeek.value > 1) currentWeek.value--;
+  loadSchedule(); // 重新加载当前周的课表
 };
 const nextWeek = () => {
-  currentWeek.value++;
+  if (currentWeek.value < 20) currentWeek.value++;
+  loadSchedule(); // 重新加载当前周的课表
 };
 
-const loadSchedule = () => {
+// 加载课表数据
+const loadSchedule = async () => {
   if (!currentClass.value) return;
   
-  uni.request({
-    url: 'http://localhost:8080/schedule/' + currentClass.value,
-    method: 'GET',
-    success: (res) => {
-      if (res.statusCode === 200) {
-        scheduleData.value = res.data.courses || [];
-        console.log('Schedule loaded:', scheduleData.value);
-      }
-    },
-    fail: () => {
-      uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
+  try {
+    const response = await uni.request({
+      url: `http://localhost:8080/api/schedule/class/${encodeURIComponent(currentClass.value)}/week/${currentWeek.value}`,
+      method: 'GET'
+    });
+
+    if (response.statusCode === 200) {
+      scheduleData.value = response.data.schedules || [];
+      console.log('Schedule loaded for week', currentWeek.value, ':', scheduleData.value);
     }
-  });
+  } catch (error) {
+    console.error('Failed to load schedule:', error);
+    uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
+  }
 };
 
 const loadLogs = () => {
@@ -117,19 +145,24 @@ const loadLogs = () => {
   });
 };
 
+// 根据时间段位置获取课程名称
 const getCourseName = (row, col) => {
-  const match = scheduleData.value.find(c => c.slot === row && c.day === col && currentWeek.value >= c.weekFrom && currentWeek.value <= c.weekTo);
-  return match ? match.name : '[Empty]';
+  const match = scheduleData.value.find(schedule => 
+    schedule.timeSlotRow === row && 
+    schedule.timeSlotCol === col
+  );
+  
+  return match ? match.course.name : '';
 };
 
 onMounted(() => {
-  const savedList = uni.getStorageSync('classList') || [];
-  classList.value = savedList;
-  if (savedList.length > 0) {
-    currentClass.value = savedList[0];
-    loadSchedule();
-    loadLogs();
-  }
+  loadClasses();
+  loadLogs();
+});
+
+// 页面显示时刷新数据
+onLoad(() => {
+  loadClasses();
 });
 </script>
 
@@ -148,9 +181,10 @@ onMounted(() => {
 }
 
 .sidebar {
-  width: 200px;
+  width: 180px;
   border-right: 2px dashed #000;
   padding: 20px;
+  flex-shrink: 0;
 }
 
 .sidebar h2 {
@@ -179,6 +213,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding: 20px;
+  min-width: 0;
 }
 
 .class-header {
@@ -235,10 +270,11 @@ onMounted(() => {
   flex: 1;
   border: 2px dashed #000;
   margin-bottom: 10px;
-  padding: 10px 0;
+  padding: 15px 0;
   display: flex;
   justify-content: center;
   align-items: center;
+  min-height: 400px;
 }
 
 .log-panel {
@@ -256,24 +292,9 @@ onMounted(() => {
   font-size: 0.9em;
 }
 
-.slot-btn {
-  width: 100%;
-  height: 100%;
-  padding: 6px;
-  background-color: #ffffff;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  font-family: 'Patrick Hand', cursive;
-  font-size: 0.95em;
-  transition: background-color 0.2s;
-}
-.slot-btn:hover {
-  background-color: #f0f0f0;
-}
-</style>
 .schedule-table {
-  width: 95%;
-  max-width: 900px;
+  width: 80%;
+  max-width: 700px;
   margin: 0 auto;
   border-collapse: collapse;
   font-size: 0.95em;
@@ -284,9 +305,12 @@ onMounted(() => {
 .schedule-table th,
 .schedule-table td {
   border: 1px solid #000;
-  padding: 12px;
-  font-size: 1em;
+  padding: 0;
+  font-size: 0.95em;
+  width: 75px;
+  min-width: 75px;
 }
+
 .schedule-table thead {
   background-color: #f5f5f5;
 }
@@ -294,15 +318,47 @@ onMounted(() => {
 .schedule-table th {
   background-color: #eaeaea;
   font-weight: bold;
-  font-size: 1em;
+  font-size: 0.95em;
+  height: 45px;
+  min-height: 45px;
+  padding: 8px;
 }
 
 .schedule-table td {
-  height: 40px;
+  height: 45px;
+  min-height: 45px;
   vertical-align: middle;
+  padding: 0;
 }
 
 .schedule-table td:first-child {
   font-weight: bold;
   background-color: #f8f8f8;
+  width: 60px;
+  min-width: 60px;
+  padding: 8px;
 }
+
+.slot-btn {
+  width: 100%;
+  height: 45px;
+  min-height: 45px;
+  padding: 6px;
+  background-color: #ffffff;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  font-family: 'Patrick Hand', cursive;
+  font-size: 0.85em;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot-btn:hover {
+  background-color: #f0f0f0;
+}
+</style>

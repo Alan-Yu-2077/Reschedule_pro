@@ -23,6 +23,12 @@
     "style": {
       "navigationBarTitleText": "班级注册"
     }
+  },
+  {
+    "path": "pages/Main_page/course_assignment",
+    "style": {
+      "navigationBarTitleText": "课程分配"
+    }
   }
 ]
 }
