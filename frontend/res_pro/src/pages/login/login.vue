@@ -35,9 +35,17 @@
         password: password.value
       },
       success: (res) => {
+        console.log('login response:', res);
         if (res.statusCode === 200) {
           uni.showToast({ title: 'Login success', icon: 'success' });
-          uni.redirectTo({ url: '/pages/Main_page/main' });
+          const userType = res.data.userType;
+          if (userType === 'admin') {
+            uni.redirectTo({ url: '/pages/admin/admin_dashboard' });
+          } else if (userType === 'user') {
+            uni.redirectTo({ url: '/pages/Main_page/main' });
+          } else {
+            uni.redirectTo({ url: '/pages/viewer/viewer_dashboard' });
+          }
         } else {
           uni.showToast({ title: 'Invalid username or password', icon: 'none' });
         }

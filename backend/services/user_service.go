@@ -28,4 +28,10 @@ func (s *UserService) UserExists(username string) bool {
 	var count int64
 	database.DB.Model(&models.User{}).Where("username = ?", username).Count(&count)
 	return count > 0
-} 
+}
+
+func (s *UserService) UserIDExists(userID string) bool {
+	var count int64
+	database.DB.Model(&models.User{}).Where("user_id = ?", userID).Count(&count)
+	return count > 0
+}

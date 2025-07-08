@@ -3,6 +3,9 @@
       <div class="login-box">
         <h1>Register</h1>
         <div>
+          <label for="userID">User ID (10 digits)</label>
+          <input type="text" id="userID" v-model="userID" placeholder="Enter 10-digit user ID" maxlength="10" />
+
           <label for="username">Username</label>
           <input type="text" id="username" v-model="username" placeholder="Enter username" />
 
@@ -20,13 +23,20 @@
   
   <script setup>
   import { ref } from 'vue';
+  const userID = ref('');
   const username = ref('');
   const password = ref('');
   const confirmPassword = ref('');
   
 const handleRegister = () => {
-  if (!username.value || !password.value || !confirmPassword.value) {
+  if (!userID.value || !username.value || !password.value || !confirmPassword.value) {
     uni.showToast({ title: 'Please complete all fields', icon: 'none' });
+    return;
+  }
+
+  // 验证UserID是否为10位数字
+  if (!/^\d{10}$/.test(userID.value)) {
+    uni.showToast({ title: 'UserID must be 10 digits', icon: 'none' });
     return;
   }
 
@@ -39,6 +49,7 @@ const handleRegister = () => {
     url: 'http://localhost:8080/register',
     method: 'POST',
     data: {
+      userID: userID.value,
       username: username.value,
       password: password.value
     },
@@ -47,7 +58,7 @@ const handleRegister = () => {
         uni.showToast({ title: 'Register success', icon: 'success' });
         uni.navigateBack(); // 返回登录页
       } else {
-        uni.showToast({ title: 'Register failed', icon: 'none' });
+        uni.showToast({ title: res.data.msg || 'Register failed', icon: 'none' });
       }
     },
     fail: () => {

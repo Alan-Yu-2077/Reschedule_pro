@@ -17,6 +17,7 @@ func main() {
 
 	routes.AuthRoutes(r)
 	routes.SetupScheduleRoutes(r)
+	routes.AdminRoutes(r)
 
 	r.Run(":8080")
 }

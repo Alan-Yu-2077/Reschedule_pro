@@ -29,6 +29,18 @@
     "style": {
       "navigationBarTitleText": "课程分配"
     }
+  },
+  {
+    "path": "pages/admin/admin_dashboard",
+    "style": {
+      "navigationBarTitleText": "Admin Dashboard"
+    }
+  },
+  {
+    "path": "pages/viewer/viewer_dashboard",
+    "style": {
+      "navigationBarTitleText": "Viewer Dashboard"
+    }
   }
 ]
 }

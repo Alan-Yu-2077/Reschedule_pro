@@ -67,8 +67,13 @@ const loadClasses = async () => {
   try {
     const response = await uni.request({
       url: 'http://localhost:8080/api/schedule/classes',
-      method: 'GET'
+      method: 'GET',
+      header: {
+        'Content-Type': 'application/json'
+      }
     });
+
+    console.log('Classes API response:', response);
 
     if (response.statusCode === 200) {
       classList.value = response.data.classes.map(cls => cls.name);
@@ -79,6 +84,9 @@ const loadClasses = async () => {
         currentClass.value = classList.value[0];
         loadSchedule();
       }
+    } else {
+      console.error('Failed to load classes, status:', response.statusCode);
+      uni.showToast({ title: 'Failed to load classes', icon: 'none' });
     }
   } catch (error) {
     console.error('Failed to load classes:', error);
@@ -120,9 +128,14 @@ const loadSchedule = async () => {
       method: 'GET'
     });
 
+    console.log('Schedule API response:', response);
+
     if (response.statusCode === 200) {
       scheduleData.value = response.data.schedules || [];
       console.log('Schedule loaded for week', currentWeek.value, ':', scheduleData.value);
+    } else {
+      console.error('Failed to load schedule, status:', response.statusCode);
+      uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
     }
   } catch (error) {
     console.error('Failed to load schedule:', error);
@@ -132,11 +145,11 @@ const loadSchedule = async () => {
 
 const loadLogs = () => {
   uni.request({
-    url: 'http://localhost:8080/logs',
+    url: 'http://localhost:8080/admin/logs',
     method: 'GET',
     success: (res) => {
       if (res.statusCode === 200) {
-        logs.value = res.data;
+        logs.value = res.data.logs || [];
       }
     },
     fail: () => {
