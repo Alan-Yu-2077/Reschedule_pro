@@ -102,3 +102,66 @@ func GetAllClasses() ([]models.Class, error) {
 	err := database.DB.Find(&classes).Error
 	return classes, err
 }
+
+// DeleteSchedule 删除指定时间槽的课程
+func DeleteSchedule(className string, weekNumber int, timeSlotRow int, timeSlotCol int) error {
+	// 1. 获取班级ID
+	var class models.Class
+	if err := database.DB.Where("name = ?", className).First(&class).Error; err != nil {
+		return err
+	}
+
+	// 2. 删除指定时间槽的课程记录
+	result := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
+		class.ID, weekNumber, timeSlotRow, timeSlotCol).Delete(&models.WeeklySchedule{})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	return nil
+}
+
+// MoveSchedule 移动课程从源位置到目标位置（支持跨周）
+func MoveSchedule(className string, sourceWeek int, sourceRow int, sourceCol int, targetWeek int, targetRow int, targetCol int) error {
+	// 1. 获取班级ID
+	var class models.Class
+	if err := database.DB.Where("name = ?", className).First(&class).Error; err != nil {
+		return err
+	}
+
+	// 2. 检查源位置是否有课程
+	var sourceSchedule models.WeeklySchedule
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
+		class.ID, sourceWeek, sourceRow, sourceCol).First(&sourceSchedule).Error; err != nil {
+		return err
+	}
+
+	// 3. 检查目标位置是否为空
+	var targetSchedule models.WeeklySchedule
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
+		class.ID, targetWeek, targetRow, targetCol).First(&targetSchedule).Error; err == nil {
+		// 目标位置已有课程，返回错误
+		return err
+	}
+
+	// 4. 创建新的目标记录
+	targetSchedule = models.WeeklySchedule{
+		ClassID:     sourceSchedule.ClassID,
+		CourseID:    sourceSchedule.CourseID,
+		WeekNumber:  targetWeek,
+		TimeSlotRow: targetRow,
+		TimeSlotCol: targetCol,
+	}
+
+	if err := database.DB.Create(&targetSchedule).Error; err != nil {
+		return err
+	}
+
+	// 5. 删除源记录
+	if err := database.DB.Delete(&sourceSchedule).Error; err != nil {
+		return err
+	}
+
+	return nil
+}

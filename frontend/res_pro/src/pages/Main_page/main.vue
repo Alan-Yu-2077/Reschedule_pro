@@ -36,12 +36,42 @@
             <tr v-for="(period, i) in ['Morning Slot 1', 'Morning Slot 2', 'Afternoon Slot 1', 'Afternoon Slot 2', 'Evening Slot']" :key="i">
               <td>{{ period }}</td>
               <td v-for="(day, j) in 7" :key="j">
-                <button class="slot-btn">{{ getCourseName(i, j) }}</button>
+                <button 
+                  class="slot-btn" 
+                  :class="{ 
+                    'selected': selectedCourse && selectedCourse.row === i && selectedCourse.col === j,
+                    'target': isSelectingTarget && selectedCourse && selectedCourse.row === i && selectedCourse.col === j
+                  }"
+                  @click="handleSlotClick(i, j)"
+                >
+                  {{ getCourseName(i, j) }}
+                </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <div class="course-swap-panel" v-if="selectedCourse">
+        <h3>Course Swap</h3>
+        <div class="swap-info">
+          <p>Selected: {{ getCourseName(selectedCourse.row, selectedCourse.col) }} (Week {{ selectedCourse.sourceWeek }}, {{ getDayName(selectedCourse.col) }}, {{ getPeriodName(selectedCourse.row) }})</p>
+          <p>Current Week: {{ currentWeek }} - Click on a slot below to move the course here</p>
+          <div class="swap-actions">
+            <button @click="cancelSelection" class="cancel-btn">Cancel</button>
+            <button @click="deleteCourse" class="delete-btn">Delete Course</button>
+            <button @click="startTargetSelection" class="swap-btn">Move to Current Week</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="target-selection-panel" v-if="isSelectingTarget">
+        <h3>Select Target Position</h3>
+        <div class="target-info">
+          <p>Click on a slot to move "{{ getCourseName(selectedCourse.row, selectedCourse.col) }}" there</p>
+          <button @click="cancelTargetSelection" class="cancel-btn">Cancel</button>
+        </div>
+      </div>
+
       <div class="log-panel">
         <h3>Activity Log</h3>
         <div class="log-content">
@@ -61,6 +91,8 @@ const classList = ref([]);
 const currentClass = ref('');
 const logs = ref([]);
 const scheduleData = ref([]);
+const selectedCourse = ref(null); // 选中的课程
+const isSelectingTarget = ref(false); // 是否正在选择目标位置
 
 // 加载班级列表
 const loadClasses = async () => {
@@ -166,6 +198,135 @@ const getCourseName = (row, col) => {
   );
   
   return match ? match.course.name : '';
+};
+
+// 获取星期名称
+const getDayName = (col) => {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  return days[col] || 'Unknown';
+};
+
+// 获取时间段名称
+const getPeriodName = (row) => {
+  const periods = ['Morning Slot 1', 'Morning Slot 2', 'Afternoon Slot 1', 'Afternoon Slot 2', 'Evening Slot'];
+  return periods[row] || 'Unknown';
+};
+
+// 处理课程槽点击
+const handleSlotClick = (row, col) => {
+  if (isSelectingTarget.value) {
+    // 正在选择目标位置
+    moveCourseToTarget(row, col);
+  } else {
+    // 选择源课程
+    const courseName = getCourseName(row, col);
+    if (courseName) {
+      selectedCourse.value = { 
+        row, 
+        col, 
+        courseName,
+        sourceWeek: currentWeek.value // 保存源周数
+      };
+    } else {
+      uni.showToast({ title: 'No course in this slot', icon: 'none' });
+    }
+  }
+};
+
+// 取消选择
+const cancelSelection = () => {
+  selectedCourse.value = null;
+  isSelectingTarget.value = false;
+};
+
+// 删除课程
+const deleteCourse = async () => {
+  if (!selectedCourse.value) return;
+  
+  try {
+    const response = await uni.request({
+      url: 'http://localhost:8080/api/schedule/delete',
+      method: 'DELETE',
+      header: {
+        'Content-Type': 'application/json'
+      },
+      data: {
+        className: currentClass.value,
+        weekNumber: selectedCourse.value.sourceWeek, // 删除源周数的课程
+        timeSlotRow: selectedCourse.value.row,
+        timeSlotCol: selectedCourse.value.col
+      }
+    });
+
+    if (response.statusCode === 200) {
+      uni.showToast({ title: 'Course deleted successfully', icon: 'success' });
+      selectedCourse.value = null;
+      loadSchedule(); // 重新加载课程表
+      loadLogs(); // 重新加载日志
+    } else {
+      uni.showToast({ title: response.data.error || 'Failed to delete course', icon: 'none' });
+    }
+  } catch (error) {
+    console.error('Failed to delete course:', error);
+    uni.showToast({ title: 'Failed to delete course', icon: 'none' });
+  }
+};
+
+// 开始选择目标位置
+const startTargetSelection = () => {
+  isSelectingTarget.value = true;
+};
+
+// 取消目标选择
+const cancelTargetSelection = () => {
+  isSelectingTarget.value = false;
+};
+
+// 移动课程到目标位置
+const moveCourseToTarget = async (targetRow, targetCol) => {
+  if (!selectedCourse.value) return;
+  
+  // 检查目标位置是否已有课程
+  const targetCourseName = getCourseName(targetRow, targetCol);
+  if (targetCourseName) {
+    uni.showToast({ title: 'Target slot is not empty', icon: 'none' });
+    return;
+  }
+  
+  // 直接使用当前周数作为目标周数
+  const targetWeek = currentWeek.value;
+  
+  try {
+    const response = await uni.request({
+      url: 'http://localhost:8080/api/schedule/move',
+      method: 'POST',
+      header: {
+        'Content-Type': 'application/json'
+      },
+      data: {
+        className: currentClass.value,
+        sourceWeek: selectedCourse.value.sourceWeek, // 使用选中的源周数
+        sourceRow: selectedCourse.value.row,
+        sourceCol: selectedCourse.value.col,
+        targetWeek: targetWeek,
+        targetRow: targetRow,
+        targetCol: targetCol
+      }
+    });
+
+    if (response.statusCode === 200) {
+      uni.showToast({ title: 'Course moved successfully', icon: 'success' });
+      selectedCourse.value = null;
+      isSelectingTarget.value = false;
+      loadSchedule(); // 重新加载课程表
+      loadLogs(); // 重新加载日志
+    } else {
+      uni.showToast({ title: response.data.error || 'Failed to move course', icon: 'none' });
+    }
+  } catch (error) {
+    console.error('Failed to move course:', error);
+    uni.showToast({ title: 'Failed to move course', icon: 'none' });
+  }
 };
 
 onMounted(() => {
@@ -290,6 +451,82 @@ onLoad(() => {
   min-height: 400px;
 }
 
+.course-swap-panel {
+  border-top: 2px dashed #000;
+  padding: 10px;
+  background: #f8f9fa;
+  margin-bottom: 10px;
+}
+
+.course-swap-panel h3 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.swap-info p {
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.swap-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.swap-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background: #5a6268;
+}
+
+.delete-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.delete-btn:hover {
+  background: #c82333;
+}
+
+.swap-btn {
+  background: #007bff;
+  color: white;
+}
+
+.swap-btn:hover {
+  background: #0056b3;
+}
+
+.target-selection-panel {
+  border-top: 2px dashed #000;
+  padding: 10px;
+  background: #fff3cd;
+  margin-bottom: 10px;
+}
+
+.target-selection-panel h3 {
+  margin-bottom: 10px;
+  color: #856404;
+}
+
+.target-info p {
+  margin-bottom: 10px;
+  color: #856404;
+}
+
 .log-panel {
   border-top: 2px dashed #000;
   padding: 10px;
@@ -361,6 +598,29 @@ onLoad(() => {
   border: 1px solid #ccc;
   cursor: pointer;
   font-family: 'Patrick Hand', cursive;
+  transition: all 0.3s ease;
+}
+
+.slot-btn.selected {
+  background: #4CAF50;
+  color: white;
+  border-color: #4CAF50;
+}
+
+.slot-btn.target {
+  background: #FF9800;
+  color: white;
+  border-color: #FF9800;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.slot-btn {
   font-size: 0.85em;
   transition: background-color 0.2s;
   display: flex;
