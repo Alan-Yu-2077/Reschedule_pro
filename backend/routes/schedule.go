@@ -12,6 +12,7 @@ func SetupScheduleRoutes(router *gin.Engine) {
 	scheduleGroup := router.Group("/api/schedule")
 	{
 		scheduleGroup.POST("/save", saveSchedule)
+		scheduleGroup.POST("/add", addSchedule)
 		scheduleGroup.GET("/class/:className/week/:weekNumber", getScheduleByClass)
 		scheduleGroup.GET("/classes", getAllClasses)
 		scheduleGroup.DELETE("/delete", deleteSchedule)
@@ -167,4 +168,48 @@ func moveSchedule(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Schedule moved successfully"})
+}
+
+// addSchedule 添加新课程
+func addSchedule(c *gin.Context) {
+	var request struct {
+		ClassName   string `json:"className"`
+		CourseName  string `json:"courseName"`
+		WeekNumber  int    `json:"weekNumber"`
+		TimeSlotRow int    `json:"timeSlotRow"`
+		TimeSlotCol int    `json:"timeSlotCol"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if request.ClassName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Class name is required"})
+		return
+	}
+
+	if request.CourseName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Course name is required"})
+		return
+	}
+
+	if request.WeekNumber < 1 || request.WeekNumber > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid week number"})
+		return
+	}
+
+	if request.TimeSlotRow < 0 || request.TimeSlotRow > 4 || request.TimeSlotCol < 0 || request.TimeSlotCol > 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid time slot"})
+		return
+	}
+
+	err := services.AddSchedule(request.ClassName, request.CourseName, request.WeekNumber, request.TimeSlotRow, request.TimeSlotCol)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add schedule: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Schedule added successfully"})
 }

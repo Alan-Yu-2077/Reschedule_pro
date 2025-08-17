@@ -2,6 +2,7 @@
   <div class="main-container">
     <div class="title-area">
       <h2>Register New Class Schedule</h2>
+
       <div class="class-name-block">
         <label>Class Name:</label>
         <textarea 
@@ -190,6 +191,8 @@ const resetNewCourse = () => {
     selectedWeeks: []
   }
 }
+
+
 
 const prevWeek = () => {
   if (currentWeek.value > 1) currentWeek.value--;
@@ -452,6 +455,8 @@ const submitSchedule = async () => {
   font-size: 2em;
   text-align: center;
 }
+
+
 
 .class-name-block {
   display: flex;

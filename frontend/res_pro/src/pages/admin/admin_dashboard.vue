@@ -79,6 +79,7 @@
                   <select v-else v-model="user.newUserType" class="password-input">
                     <option value="viewer">viewer</option>
                     <option value="user">user</option>
+                    <option value="teacher">teacher</option>
                     <option value="admin">admin</option>
                   </select>
                 </td>
@@ -200,6 +201,7 @@
           <select v-model="newUser.userType" class="user-input">
             <option value="viewer">viewer</option>
             <option value="user">user</option>
+            <option value="teacher">teacher</option>
             <option value="admin">admin</option>
           </select>
         </div>
@@ -407,8 +409,13 @@ const cancelEditPassword = (user) => {
 
 // 登出
 const handleLogout = () => {
-  uni.showToast({ title: 'Logged out', icon: 'success' });
-  uni.redirectTo({ url: '/pages/login/login' });
+  uni.clearStorageSync(); // 清除本地存储
+  uni.showToast({ title: 'Logged out successfully', icon: 'success' });
+  setTimeout(() => {
+    uni.reLaunch({
+      url: '/pages/login/login'
+    });
+  }, 1000);
 };
 
 // 添加用户

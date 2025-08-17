@@ -3,6 +3,7 @@ package services
 import (
 	"reschedule-program/database"
 	"reschedule-program/models"
+	"strconv"
 )
 
 // ScheduleData 前端传来的课程表数据
@@ -162,6 +163,75 @@ func MoveSchedule(className string, sourceWeek int, sourceRow int, sourceCol int
 	if err := database.DB.Delete(&sourceSchedule).Error; err != nil {
 		return err
 	}
+
+	return nil
+}
+
+// AddSchedule 添加新课程到指定时间槽
+func AddSchedule(className string, courseName string, weekNumber int, timeSlotRow int, timeSlotCol int) error {
+	// 1. 获取或创建班级
+	var class models.Class
+	result := database.DB.Where("name = ?", className).First(&class)
+	if result.Error != nil {
+		// 班级不存在，创建新班级
+		class = models.Class{Name: className}
+		if err := database.DB.Create(&class).Error; err != nil {
+			// 记录错误日志
+			logService := NewLogService()
+			logService.AddLog("Failed to create class: " + className + " - " + err.Error())
+			return err
+		}
+		// 记录创建班级日志
+		logService := NewLogService()
+		logService.AddLog("Created new class: " + className)
+	}
+
+	// 2. 获取或创建课程
+	var course models.Course
+	result = database.DB.Where("name = ?", courseName).First(&course)
+	if result.Error != nil {
+		// 课程不存在，创建新课程
+		course = models.Course{Name: courseName}
+		if err := database.DB.Create(&course).Error; err != nil {
+			// 记录错误日志
+			logService := NewLogService()
+			logService.AddLog("Failed to create course: " + courseName + " - " + err.Error())
+			return err
+		}
+		// 记录创建课程日志
+		logService := NewLogService()
+		logService.AddLog("Created new course: " + courseName)
+	}
+
+	// 3. 检查目标位置是否已有课程
+	var existingSchedule models.WeeklySchedule
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
+		class.ID, weekNumber, timeSlotRow, timeSlotCol).First(&existingSchedule).Error; err == nil {
+		// 目标位置已有课程，返回错误
+		logService := NewLogService()
+		logService.AddLog("Failed to add course: slot already occupied")
+		return err
+	}
+
+	// 4. 创建新的课程记录
+	weeklySchedule := models.WeeklySchedule{
+		ClassID:     class.ID,
+		CourseID:    course.ID,
+		WeekNumber:  weekNumber,
+		TimeSlotRow: timeSlotRow,
+		TimeSlotCol: timeSlotCol,
+	}
+
+	if err := database.DB.Create(&weeklySchedule).Error; err != nil {
+		// 记录错误日志
+		logService := NewLogService()
+		logService.AddLog("Failed to create weekly schedule: " + err.Error())
+		return err
+	}
+
+	// 记录成功日志
+	logService := NewLogService()
+	logService.AddLog("Added course: " + courseName + " to " + className + " Week " + strconv.Itoa(weekNumber))
 
 	return nil
 }

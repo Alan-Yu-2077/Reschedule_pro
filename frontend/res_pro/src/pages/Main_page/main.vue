@@ -1,15 +1,32 @@
 <template>
   <div class="main-container">
-    <div class="sidebar">
+    <!-- 侧边栏切换按钮 -->
+    <div class="sidebar-toggle" @click="toggleSidebar" title="Toggle Sidebar">
+      <div class="hamburger-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <span class="toggle-text">Menu</span>
+    </div>
+
+    <!-- 背景遮罩 -->
+    <div class="sidebar-overlay" :class="{ active: sidebarExpanded }" @click="closeSidebar"></div>
+
+    <!-- 侧边栏 -->
+    <div class="sidebar" :class="{ 'sidebar-expanded': sidebarExpanded }">
       <div class="class-header">
         <h2>Class List</h2>
-        <button class="add-btn" @click="goImportPage">➕</button>
+        <!-- 根据用户类型显示不同的加号功能 -->
+        <button v-if="userType === 'user'" class="add-btn" @click="goImportPage">➕</button>
+        <button v-else-if="userType === 'teacher'" class="add-btn" @click="showTeacherPlaceholder">➕</button>
       </div>
       <ul>
         <li v-for="cls in classList" :key="cls" @click="selectClass(cls)">
           {{ cls }}
         </li>
       </ul>
+
     </div>
 
     <div class="schedule-panel">
@@ -72,6 +89,42 @@
         </div>
       </div>
 
+      <!-- 添加新课程面板 -->
+      <div class="add-course-panel" v-if="isAddingNewCourse">
+        <h3>Add New Course</h3>
+        <div class="add-course-info">
+          <p>Adding course to: Week {{ newCourseSlot.week }}, {{ getDayName(newCourseSlot.col) }}, {{ getPeriodName(newCourseSlot.row) }}</p>
+          <div class="add-course-form">
+            <input 
+              v-model="newCourseName" 
+              type="text" 
+              placeholder="Enter course name" 
+              class="course-name-input"
+              maxlength="30"
+              @keyup.enter="addNewCourse(newCourseName)"
+            />
+            <div class="add-course-actions">
+              <button @click="cancelAddNewCourse" class="cancel-btn">Cancel</button>
+              <button @click="addNewCourse(newCourseName)" class="confirm-add-btn">Add Course</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Teacher占位符弹窗 -->
+      <div class="teacher-modal" v-if="showTeacherModal">
+        <div class="teacher-modal-content">
+          <div class="teacher-placeholder">
+            <div class="placeholder-content">
+              <h4>Teacher Module</h4>
+              <p>This module is under development</p>
+              <div class="placeholder-icon">📚</div>
+            </div>
+          </div>
+          <button class="close-btn" @click="closeTeacherModal">Close</button>
+        </div>
+      </div>
+
       <div class="log-panel">
         <h3>Activity Log</h3>
         <div class="log-content">
@@ -93,6 +146,12 @@ const logs = ref([]);
 const scheduleData = ref([]);
 const selectedCourse = ref(null); // 选中的课程
 const isSelectingTarget = ref(false); // 是否正在选择目标位置
+const isAddingNewCourse = ref(false); // 是否正在添加新课程
+const newCourseSlot = ref(null); // 新课程的位置信息
+const newCourseName = ref(''); // 新课程名称
+const sidebarExpanded = ref(false); // 侧边栏默认收起
+const userType = ref(''); // 用户类型
+const showTeacherModal = ref(false); // 控制teacher占位符弹窗显示
 
 // 加载班级列表
 const loadClasses = async () => {
@@ -131,6 +190,8 @@ const selectClass = (cls) => {
   logs.value.push(`Switched to class: ${cls}`);
   loadSchedule();
   loadLogs();
+  // 选择班级后自动收起侧边栏
+  sidebarExpanded.value = false;
 };
 
 const router = useRouter();
@@ -217,8 +278,15 @@ const handleSlotClick = (row, col) => {
   if (isSelectingTarget.value) {
     // 正在选择目标位置
     moveCourseToTarget(row, col);
+  } else if (selectedCourse.value) {
+    // 如果已经有选中的课程，点击空白地方应该取消选择
+    const courseName = getCourseName(row, col);
+    if (!courseName) {
+      // 点击空白地方，取消当前选择
+      cancelSelection();
+    }
   } else {
-    // 选择源课程
+    // 没有选中课程时，选择源课程或添加新课程
     const courseName = getCourseName(row, col);
     if (courseName) {
       selectedCourse.value = { 
@@ -228,7 +296,9 @@ const handleSlotClick = (row, col) => {
         sourceWeek: currentWeek.value // 保存源周数
       };
     } else {
-      uni.showToast({ title: 'No course in this slot', icon: 'none' });
+      // 空时间段，显示添加新课程选项
+      newCourseSlot.value = { row, col, week: currentWeek.value };
+      isAddingNewCourse.value = true;
     }
   }
 };
@@ -237,6 +307,53 @@ const handleSlotClick = (row, col) => {
 const cancelSelection = () => {
   selectedCourse.value = null;
   isSelectingTarget.value = false;
+};
+
+// 取消添加新课程
+const cancelAddNewCourse = () => {
+  isAddingNewCourse.value = false;
+  newCourseSlot.value = null;
+  newCourseName.value = ''; // 清空输入框
+};
+
+// 添加新课程
+const addNewCourse = async (courseName) => {
+  if (!courseName.trim()) {
+    uni.showToast({ title: 'Please enter a course name', icon: 'none' });
+    return;
+  }
+  
+  if (!newCourseSlot.value) return;
+  
+  try {
+    const response = await uni.request({
+      url: 'http://localhost:8080/api/schedule/add',
+      method: 'POST',
+      header: {
+        'Content-Type': 'application/json'
+      },
+      data: {
+        className: currentClass.value,
+        courseName: courseName.trim(),
+        weekNumber: newCourseSlot.value.week,
+        timeSlotRow: newCourseSlot.value.row,
+        timeSlotCol: newCourseSlot.value.col
+      }
+    });
+
+    if (response.statusCode === 200) {
+      uni.showToast({ title: 'Course added successfully', icon: 'success' });
+      isAddingNewCourse.value = false;
+      newCourseSlot.value = null;
+      loadSchedule(); // 重新加载课程表
+      loadLogs(); // 重新加载日志
+    } else {
+      uni.showToast({ title: response.data.error || 'Failed to add course', icon: 'none' });
+    }
+  } catch (error) {
+    console.error('Failed to add course:', error);
+    uni.showToast({ title: 'Failed to add course', icon: 'none' });
+  }
 };
 
 // 删除课程
@@ -329,13 +446,46 @@ const moveCourseToTarget = async (targetRow, targetCol) => {
   }
 };
 
+
+
+const toggleSidebar = () => {
+  sidebarExpanded.value = !sidebarExpanded.value;
+};
+
+const closeSidebar = () => {
+  sidebarExpanded.value = false;
+};
+
+// 显示teacher占位符弹窗
+const showTeacherPlaceholder = () => {
+  showTeacherModal.value = true;
+};
+
+// 关闭teacher占位符弹窗
+const closeTeacherModal = () => {
+  showTeacherModal.value = false;
+};
+
+// 获取用户类型
+const getUserType = () => {
+  const userInfo = uni.getStorageSync('userInfo');
+  if (userInfo && userInfo.userType) {
+    userType.value = userInfo.userType;
+  } else {
+    // 如果没有存储的用户信息，默认为user类型
+    userType.value = 'user';
+  }
+};
+
 onMounted(() => {
+  getUserType();
   loadClasses();
   loadLogs();
 });
 
 // 页面显示时刷新数据
 onLoad(() => {
+  getUserType();
   loadClasses();
 });
 </script>
@@ -352,13 +502,110 @@ onLoad(() => {
   box-sizing: border-box;
   background-image: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
   background-size: auto;
+  position: relative;
+  overflow: hidden; /* 防止侧边栏溢出 */
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1000;
+  cursor: pointer;
+  padding: 12px;
+  background: #fff;
+  border: 2px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex; /* 使用flex布局 */
+  align-items: center; /* 垂直居中 */
+  gap: 8px; /* 汉堡菜单和文字之间的间距 */
+  transition: all 0.3s ease;
+}
+
+.sidebar-toggle:hover {
+  background: #f8f9fa;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  transform: scale(1.1);
+  border-color: #007bff;
+}
+
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 20px;
+  height: 16px;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: #333;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+/* 汉堡菜单动画效果 */
+.sidebar-toggle:hover .hamburger-icon span:nth-child(1) {
+  transform: rotate(45deg) translate(5px, 5px);
+}
+
+.sidebar-toggle:hover .hamburger-icon span:nth-child(2) {
+  opacity: 0;
+}
+
+.sidebar-toggle:hover .hamburger-icon span:nth-child(3) {
+  transform: rotate(-45deg) translate(7px, -6px);
+}
+
+.toggle-text {
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* 背景遮罩 */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+  visibility: visible;
 }
 
 .sidebar {
-  width: 180px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 250px;
+  height: 100vh;
   border-right: 2px dashed #000;
   padding: 20px;
-  flex-shrink: 0;
+  padding-top: 80px; /* 增加顶部内边距，避免被汉堡菜单按钮遮挡 */
+  display: flex;
+  flex-direction: column;
+  background: #fdfdfb;
+  z-index: 200;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease-in-out;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-expanded {
+  transform: translateX(0);
 }
 
 .sidebar h2 {
@@ -368,6 +615,8 @@ onLoad(() => {
 .sidebar ul {
   list-style: none;
   padding: 0;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar li {
@@ -382,12 +631,401 @@ onLoad(() => {
   background: rgba(0, 0, 0, 0.05);
 }
 
+/* Teacher专用占位符样式 */
+.teacher-placeholder {
+  background: #f8f9fa;
+  border: 2px dashed #007bff;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.placeholder-content h4 {
+  margin: 0 0 8px 0;
+  color: #007bff;
+  font-size: 1em;
+}
+
+.placeholder-content p {
+  margin: 0 0 10px 0;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.placeholder-icon {
+  font-size: 2em;
+  margin-top: 10px;
+}
+
+/* Teacher弹窗样式 */
+.teacher-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.teacher-modal-content {
+  background: #fff;
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.close-btn {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.close-btn:hover {
+  background: #0056b3;
+}
+
 .schedule-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   padding: 20px;
   min-width: 0;
+  width: 100%;
+  height: 100vh;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+  max-width: 100vw;
+  padding: 0;
+}
+
+/* 响应式设计：在小屏幕上调整布局 */
+@media (max-width: 768px) {
+  .main-container {
+    padding: 4px;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  
+  .sidebar {
+    width: 280px;
+  }
+  
+  .schedule-panel {
+    padding: 4px;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .schedule-top {
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+  
+  .schedule-top .title h2 {
+    font-size: 1em;
+    margin: 0;
+    line-height: 1.2;
+  }
+  
+  .schedule-body {
+    flex: 1;
+    min-height: 0;
+    padding: 4px 0;
+    overflow: visible;
+    border: 1px dashed #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .schedule-table {
+    width: 90%;
+    max-width: 400px;
+    font-size: 0.8em;
+    table-layout: fixed;
+  }
+  
+  .schedule-table th,
+  .schedule-table td {
+    width: auto;
+    min-width: 20px;
+    font-size: 0.8em;
+    padding: 2px;
+  }
+  
+  .schedule-table th {
+    height: 30px;
+    min-height: 30px;
+    padding: 2px;
+  }
+  
+  .schedule-table td {
+    height: 30px;
+    min-height: 30px;
+  }
+  
+  .schedule-table td:first-child {
+    width: 50px;
+    min-width: 50px;
+    padding: 2px;
+    font-size: 0.7em;
+  }
+  
+  .slot-btn {
+    width: 25px !important;
+    height: 30px !important;
+    min-width: 25px !important;
+    min-height: 30px !important;
+    padding: 2px;
+    font-size: 0.7em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .course-swap-panel,
+  .target-selection-panel,
+  .add-course-panel {
+    padding: 5px;
+    margin-bottom: 5px;
+    flex-shrink: 0;
+  }
+  
+  .course-swap-panel h3,
+  .target-selection-panel h3,
+  .add-course-panel h3 {
+    font-size: 0.9em;
+    margin-bottom: 5px;
+  }
+  
+  .swap-info p,
+  .target-info p,
+  .add-course-info p {
+    font-size: 0.8em;
+    margin-bottom: 5px;
+  }
+  
+  .swap-actions,
+  .add-course-actions {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .swap-actions button,
+  .add-course-actions button {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .add-course-form {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .course-name-input {
+    padding: 8px;
+    font-size: 16px;
+  }
+  
+  .log-panel {
+    max-height: 80px;
+    padding: 5px;
+    flex-shrink: 0;
+    overflow: auto;
+  }
+  
+  .log-panel h3 {
+    font-size: 0.9em;
+    margin-bottom: 5px;
+  }
+  
+  .log-content {
+    font-size: 0.7em;
+  }
+  
+  .teacher-placeholder {
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .placeholder-content h4 {
+    font-size: 0.9em;
+  }
+  
+  .placeholder-content p {
+    font-size: 0.8em;
+  }
+  
+  .placeholder-icon {
+    font-size: 1.5em;
+  }
+  
+  .teacher-modal-content {
+    padding: 20px;
+    max-width: 350px;
+  }
+  
+  .close-btn {
+    margin-top: 15px;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 480px) {
+  .main-container {
+    padding: 2px;
+  }
+  
+  .schedule-panel {
+    padding: 2px;
+  }
+  
+  .schedule-top {
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+  
+  .schedule-top .title h2 {
+    font-size: 0.9em;
+  }
+  
+  .schedule-body {
+    padding: 2px 0;
+  }
+  
+  .schedule-table {
+    width: 100%;
+    font-size: 0.7em;
+  }
+  
+  .schedule-table th,
+  .schedule-table td {
+    width: auto;
+    min-width: 20px;
+    font-size: 0.7em;
+    padding: 2px;
+  }
+  
+  .schedule-table th {
+    height: 25px;
+    min-height: 25px;
+    padding: 2px;
+  }
+  
+  .schedule-table td {
+    height: 25px;
+    min-height: 25px;
+  }
+  
+  .schedule-table td:first-child {
+    width: 40px;
+    min-width: 40px;
+    padding: 2px;
+    font-size: 0.6em;
+  }
+  
+  .slot-btn {
+    width: 20px !important;
+    height: 25px !important;
+    min-width: 20px !important;
+    min-height: 25px !important;
+    padding: 2px;
+    font-size: 0.6em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .course-swap-panel,
+  .target-selection-panel,
+  .add-course-panel {
+    padding: 3px;
+    margin-bottom: 3px;
+  }
+  
+  .course-swap-panel h3,
+  .target-selection-panel h3,
+  .add-course-panel h3 {
+    font-size: 0.8em;
+    margin-bottom: 3px;
+  }
+  
+  .swap-info p,
+  .target-info p,
+  .add-course-info p {
+    font-size: 0.7em;
+    margin-bottom: 3px;
+  }
+  
+  .swap-actions button,
+  .add-course-actions button {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  
+  .log-panel {
+    max-height: 60px;
+    padding: 3px;
+  }
+  
+  .log-panel h3 {
+    font-size: 0.8em;
+    margin-bottom: 3px;
+  }
+  
+  .log-content {
+    font-size: 0.6em;
+  }
+  
+  .teacher-placeholder {
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .placeholder-content h4 {
+    font-size: 0.8em;
+  }
+  
+  .placeholder-content p {
+    font-size: 0.7em;
+  }
+  
+  .placeholder-icon {
+    font-size: 1.2em;
+  }
+  
+  .teacher-modal-content {
+    padding: 15px;
+    max-width: 300px;
+  }
+  
+  .close-btn {
+    margin-top: 12px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
 }
 
 .class-header {
@@ -527,6 +1165,62 @@ onLoad(() => {
   color: #856404;
 }
 
+.add-course-panel {
+  border-top: 2px dashed #000;
+  padding: 10px;
+  background: #e0f2f7;
+  margin-bottom: 10px;
+}
+
+.add-course-panel h3 {
+  margin-bottom: 10px;
+  color: #007bff;
+}
+
+.add-course-info p {
+  margin-bottom: 10px;
+  font-weight: bold;
+  color: #333;
+}
+
+.add-course-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.course-name-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: 'Patrick Hand', cursive;
+  font-size: 0.9em;
+}
+
+.add-course-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.add-course-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.confirm-add-btn {
+  background: #28a745;
+  color: white;
+}
+
+.confirm-add-btn:hover {
+  background: #218838;
+}
+
 .log-panel {
   border-top: 2px dashed #000;
   padding: 10px;
@@ -543,11 +1237,11 @@ onLoad(() => {
 }
 
 .schedule-table {
-  width: 80%;
-  max-width: 700px;
+  width: 100%;
+  max-width: 100vw;
   margin: 0 auto;
   border-collapse: collapse;
-  font-size: 0.95em;
+  font-size: 1em;
   table-layout: fixed;
   text-align: center;
 }
@@ -556,9 +1250,11 @@ onLoad(() => {
 .schedule-table td {
   border: 1px solid #000;
   padding: 0;
-  font-size: 0.95em;
-  width: 75px;
-  min-width: 75px;
+  font-size: 0.8em;
+  width: 40px;
+  min-width: 40px;
+  height: 50px;
+  min-height: 50px;
 }
 
 .schedule-table thead {
@@ -568,15 +1264,15 @@ onLoad(() => {
 .schedule-table th {
   background-color: #eaeaea;
   font-weight: bold;
-  font-size: 0.95em;
-  height: 45px;
-  min-height: 45px;
+  font-size: 0.8em;
+  height: 50px;
+  min-height: 50px;
   padding: 8px;
 }
 
 .schedule-table td {
-  height: 45px;
-  min-height: 45px;
+  height: 50px;
+  min-height: 50px;
   vertical-align: middle;
   padding: 0;
 }
@@ -586,19 +1282,21 @@ onLoad(() => {
   background-color: #f8f8f8;
   width: 60px;
   min-width: 60px;
-  padding: 8px;
+  padding: 0;
+  font-size: 0.95em;
 }
 
 .slot-btn {
-  width: 100%;
-  height: 45px;
-  min-height: 45px;
-  padding: 6px;
-  background-color: #ffffff;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  font-family: 'Patrick Hand', cursive;
-  transition: all 0.3s ease;
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 50px !important;
+  min-height: 50px !important;
+  font-size: 0.8em;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .slot-btn.selected {

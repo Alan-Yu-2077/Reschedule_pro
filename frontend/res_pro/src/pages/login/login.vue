@@ -39,9 +39,16 @@
         if (res.statusCode === 200) {
           uni.showToast({ title: 'Login success', icon: 'success' });
           const userType = res.data.userType;
+          
+          // 存储用户信息到本地存储
+          uni.setStorageSync('userInfo', {
+            userType: userType,
+            username: username.value
+          });
+          
           if (userType === 'admin') {
             uni.redirectTo({ url: '/pages/admin/admin_dashboard' });
-          } else if (userType === 'user') {
+          } else if (userType === 'user' || userType === 'teacher') {
             uni.redirectTo({ url: '/pages/Main_page/main' });
           } else {
             uni.redirectTo({ url: '/pages/viewer/viewer_dashboard' });

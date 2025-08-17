@@ -2,7 +2,13 @@
   <div class="main-container">
     <div class="title-area">
       <h2>Course Assignment</h2>
-      <button class="back-btn" @click="goBack">← Back</button>
+      <div class="title-actions">
+        <button class="back-btn" @click="goBack">← Back</button>
+        <button class="logout-btn" @click="logout">
+          <span class="logout-icon">🚪</span>
+          <span class="logout-text">Logout</span>
+        </button>
+      </div>
     </div>
 
     <!-- 课程信息输入区域 -->
@@ -136,6 +142,16 @@ onShow(() => {
 const goBack = () => {
   uni.navigateBack()
 }
+
+const logout = () => {
+  uni.clearStorageSync(); // 清除本地存储
+  uni.showToast({ title: 'Logged out successfully', icon: 'success' });
+  setTimeout(() => {
+    uni.reLaunch({
+      url: '/pages/login/login'
+    });
+  }, 1000);
+};
 
 const toggleWeek = (week) => {
   const index = selectedWeeks.value.indexOf(week)
@@ -309,6 +325,39 @@ const saveAssignments = () => {
 .back-btn:hover {
   background: #f5f5f5;
   transform: translateY(-2px);
+}
+
+.title-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.logout-btn {
+  padding: 10px 20px;
+  background: #ff6b6b;
+  color: white;
+  border: 2px solid #ff4444;
+  border-radius: 8px;
+  font-family: 'Patrick Hand', cursive;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.logout-btn:hover {
+  background: #ff4444;
+  transform: translateY(-2px);
+}
+
+.logout-icon {
+  font-size: 1.2em;
+}
+
+.logout-text {
+  font-weight: bold;
 }
 
 .course-input-section {
