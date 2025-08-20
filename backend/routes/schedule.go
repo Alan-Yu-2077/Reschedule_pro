@@ -2,6 +2,8 @@ package routes
 
 import (
 	"net/http"
+	"reschedule-program/database"
+	"reschedule-program/models"
 	"reschedule-program/services"
 	"strconv"
 
@@ -60,7 +62,16 @@ func getScheduleByClass(c *gin.Context) {
 		return
 	}
 
-	schedules, err := services.GetScheduleByClass(className, weekNumber)
+	// 若 className 是数字ID，则转换为实际班级名
+	resolvedName := className
+	if id, err := strconv.Atoi(className); err == nil && id > 0 {
+		var cls models.Class
+		if err2 := database.DB.Where("id = ?", uint(id)).First(&cls).Error; err2 == nil {
+			resolvedName = cls.Name
+		}
+	}
+
+	schedules, err := services.GetScheduleByClass(resolvedName, weekNumber)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get schedule: " + err.Error()})
 		return
@@ -109,7 +120,16 @@ func deleteSchedule(c *gin.Context) {
 		return
 	}
 
-	err := services.DeleteSchedule(request.ClassName, request.WeekNumber, request.TimeSlotRow, request.TimeSlotCol)
+	// 若 ClassName 是数字ID，则转换为实际班级名
+	resolvedName := request.ClassName
+	if id, err := strconv.Atoi(request.ClassName); err == nil && id > 0 {
+		var cls models.Class
+		if err2 := database.DB.Where("id = ?", uint(id)).First(&cls).Error; err2 == nil {
+			resolvedName = cls.Name
+		}
+	}
+
+	err := services.DeleteSchedule(resolvedName, request.WeekNumber, request.TimeSlotRow, request.TimeSlotCol)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete schedule: " + err.Error()})
 		return
@@ -161,7 +181,16 @@ func moveSchedule(c *gin.Context) {
 		return
 	}
 
-	err := services.MoveSchedule(request.ClassName, request.SourceWeek, request.SourceRow, request.SourceCol, request.TargetWeek, request.TargetRow, request.TargetCol)
+	// 若 ClassName 是数字ID，则转换为实际班级名
+	resolvedName := request.ClassName
+	if id, err := strconv.Atoi(request.ClassName); err == nil && id > 0 {
+		var cls models.Class
+		if err2 := database.DB.Where("id = ?", uint(id)).First(&cls).Error; err2 == nil {
+			resolvedName = cls.Name
+		}
+	}
+
+	err := services.MoveSchedule(resolvedName, request.SourceWeek, request.SourceRow, request.SourceCol, request.TargetWeek, request.TargetRow, request.TargetCol)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move schedule: " + err.Error()})
 		return
@@ -205,7 +234,16 @@ func addSchedule(c *gin.Context) {
 		return
 	}
 
-	err := services.AddSchedule(request.ClassName, request.CourseName, request.WeekNumber, request.TimeSlotRow, request.TimeSlotCol)
+	// 若 ClassName 是数字ID，则转换为实际班级名
+	resolvedName := request.ClassName
+	if id, err := strconv.Atoi(request.ClassName); err == nil && id > 0 {
+		var cls models.Class
+		if err2 := database.DB.Where("id = ?", uint(id)).First(&cls).Error; err2 == nil {
+			resolvedName = cls.Name
+		}
+	}
+
+	err := services.AddSchedule(resolvedName, request.CourseName, request.WeekNumber, request.TimeSlotRow, request.TimeSlotCol)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add schedule: " + err.Error()})
 		return

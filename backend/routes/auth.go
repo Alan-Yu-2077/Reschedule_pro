@@ -88,6 +88,7 @@ func AuthRoutes(r *gin.Engine) {
 			"msg":      "Login success",
 			"userType": dbUser.UserType,
 			"username": dbUser.Username,
+			"userID":   dbUser.UserID,
 		})
 	})
 }

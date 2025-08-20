@@ -31,3 +31,14 @@ type ActivityLog struct {
 	gorm.Model
 	Message string `json:"message" gorm:"not null"`
 }
+
+// TeacherTeachSlot 教师在某班的授课占位（用于跨班冲突判定）
+type TeacherTeachSlot struct {
+	gorm.Model
+	TeacherID string `json:"teacherId" gorm:"size:10;not null;index:idx_teacher_slot,priority:1"`
+	ClassID   uint   `json:"classId" gorm:"not null;index:idx_teacher_slot,priority:2"`
+	Week      int    `json:"week" gorm:"not null;index:idx_teacher_slot,priority:3"`
+	Row       int    `json:"row" gorm:"not null;index:idx_teacher_slot,priority:4"`
+	Col       int    `json:"col" gorm:"not null;index:idx_teacher_slot,priority:5"`
+	Class     Class  `json:"class" gorm:"foreignKey:ClassID"`
+}

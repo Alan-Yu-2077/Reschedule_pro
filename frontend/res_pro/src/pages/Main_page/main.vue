@@ -19,7 +19,7 @@
         <h2>Class List</h2>
         <!-- 根据用户类型显示不同的加号功能 -->
         <button v-if="userType === 'user'" class="add-btn" @click="goImportPage">➕</button>
-        <button v-else-if="userType === 'teacher'" class="add-btn" @click="showTeacherPlaceholder">➕</button>
+        <button v-else-if="userType === 'teacher'" class="add-btn" @click="openTeacherPlanModal">➕</button>
       </div>
       <ul>
         <li v-for="cls in classList" :key="cls" @click="selectClass(cls)">
@@ -39,6 +39,7 @@
         </div>
         <div class="controls">
           <button @click="nextWeek">→</button>
+          <button v-if="userType === 'teacher'" @click="openTeacherPlanViewer">View Plan</button>
         </div>
       </div>
       <div class="schedule-body">
@@ -57,7 +58,8 @@
                   class="slot-btn" 
                   :class="{ 
                     'selected': selectedCourse && selectedCourse.row === i && selectedCourse.col === j,
-                    'target': isSelectingTarget && selectedCourse && selectedCourse.row === i && selectedCourse.col === j
+                    'target': isSelectingTarget && selectedCourse && selectedCourse.row === i && selectedCourse.col === j,
+                    'busy': isSlotBusy(i, j)
                   }"
                   @click="handleSlotClick(i, j)"
                 >
@@ -111,17 +113,137 @@
         </div>
       </div>
 
-      <!-- Teacher占位符弹窗 -->
-      <div class="teacher-modal" v-if="showTeacherModal">
+      <!-- 教师计划录入弹窗 -->
+      <div class="teacher-modal" v-if="showTeacherPlanModal">
         <div class="teacher-modal-content">
-          <div class="teacher-placeholder">
-            <div class="placeholder-content">
-              <h4>Teacher Module</h4>
-              <p>This module is under development</p>
-              <div class="placeholder-icon">📚</div>
+          <div class="teacher-plan-header">
+            <h4>Teacher Plan</h4>
+          </div>
+          <div class="teacher-plan-body">
+            <div class="input-group">
+              <label>Class ID</label>
+              <input class="plan-input" v-model="planClassName" placeholder="Enter class ID/name" />
+            </div>
+
+            <div class="week-type-selection">
+              <label>Week Type</label>
+              <div class="week-type-buttons">
+                <button 
+                  class="week-type-btn" 
+                  :class="{ active: planWeekType === 'continuous' }"
+                  @click="planWeekType = 'continuous'"
+                >Continuous Weeks</button>
+                <button 
+                  class="week-type-btn" 
+                  :class="{ active: planWeekType === 'discrete' }"
+                  @click="planWeekType = 'discrete'"
+                >Discrete Weeks</button>
+              </div>
+            </div>
+
+            <div v-if="planWeekType === 'continuous'" class="continuous-weeks">
+              <div class="week-range">
+                <div class="range-input">
+                  <label>Start Week</label>
+                  <select v-model.number="planStartWeek" class="week-select">
+                    <option v-for="w in 20" :key="'sw'+w" :value="w">{{ w }}</option>
+                  </select>
+                </div>
+                <div class="range-input">
+                  <label>End Week</label>
+                  <select v-model.number="planEndWeek" class="week-select">
+                    <option v-for="w in 20" :key="'ew'+w" :value="w">{{ w }}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="discrete-weeks">
+              <label>Select Weeks</label>
+              <div class="week-grid">
+                <button 
+                  v-for="w in 20" :key="'dw'+w" 
+                  class="week-number-btn"
+                  :class="{ selected: planSelectedWeeks.includes(w) }"
+                  @click="togglePlanWeek(w)"
+                >{{ w }}</button>
+              </div>
+            </div>
+
+            <div class="plan-grid-wrapper">
+              <div class="plan-grid-title">Select Teaching Slots</div>
+              <table class="plan-table">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th v-for="day in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="day">{{ day }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(period, i) in ['Morning Slot 1','Morning Slot 2','Afternoon Slot 1','Afternoon Slot 2','Evening Slot']" :key="i">
+                    <td>{{ period }}</td>
+                    <td v-for="j in 7" :key="j">
+                      <button class="slot-btn plan-slot"
+                        :class="{ 'plan-selected': isPlanSelected(i, j-1) }"
+                        @click="togglePlanSlot(i, j-1)">
+                        {{ isPlanSelected(i, j-1) ? '✓' : '' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-          <button class="close-btn" @click="closeTeacherModal">Close</button>
+          <div class="teacher-plan-footer">
+            <button class="close-btn" @click="closeTeacherPlanModal">Cancel</button>
+            <button class="save-btn" @click="saveTeacherPlan">Save</button>
+            <button class="clear-btn" @click="clearAllTeacherPlans">Clear All My Plans</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 教师计划查看弹窗（只读） -->
+      <div class="teacher-modal" v-if="showTeacherPlanViewer">
+        <div class="teacher-modal-content">
+          <div class="teacher-plan-header">
+            <h4>My Weekly Plan</h4>
+          </div>
+          <div class="teacher-plan-body">
+            <div class="week-type-selection">
+              <label>Week</label>
+              <div class="viewer-week-switch">
+                <button class="week-nav" @click="prevViewerWeek">←</button>
+                <span class="week-label">Week {{ viewerWeek }}</span>
+                <button class="week-nav" @click="nextViewerWeek">→</button>
+              </div>
+            </div>
+
+            <div class="plan-grid-wrapper">
+              <div class="plan-grid-title">Busy Slots</div>
+              <table class="plan-table">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th v-for="day in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="day">{{ day }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(period, i) in ['Morning Slot 1','Morning Slot 2','Afternoon Slot 1','Afternoon Slot 2','Evening Slot']" :key="i">
+                    <td>{{ period }}</td>
+                    <td v-for="j in 7" :key="j">
+                      <div class="viewer-slot" :class="{ 'busy': isViewerBusy(i, j-1) }">
+                        <span class="dot" v-if="isViewerBusy(i, j-1)"></span>
+                        <span class="cls-text" v-if="isViewerBusy(i, j-1)">{{ getViewerClassText(i, j-1) }}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="teacher-plan-footer">
+            <button class="close-btn" @click="closeTeacherPlanViewer">Close</button>
+          </div>
         </div>
       </div>
 
@@ -151,7 +273,16 @@ const newCourseSlot = ref(null); // 新课程的位置信息
 const newCourseName = ref(''); // 新课程名称
 const sidebarExpanded = ref(false); // 侧边栏默认收起
 const userType = ref(''); // 用户类型
-const showTeacherModal = ref(false); // 控制teacher占位符弹窗显示
+const showTeacherPlanModal = ref(false); // 教师计划弹窗
+const showTeacherPlanViewer = ref(false); // 教师计划查看弹窗
+const planClassName = ref('');
+const planWeekType = ref('continuous');
+const planStartWeek = ref(1);
+const planEndWeek = ref(1);
+const planSelectedWeeks = ref([]);
+const planSelectedSlots = ref(new Set()); // key: `${row}-${col}`
+const busySlots = ref(new Set()); // 当前周的忙碌集合，key: `${row}-${col}`
+const userID = ref('');
 
 // 加载班级列表
 const loadClasses = async () => {
@@ -192,6 +323,7 @@ const selectClass = (cls) => {
   loadLogs();
   // 选择班级后自动收起侧边栏
   sidebarExpanded.value = false;
+  loadBusySlots();
 };
 
 const router = useRouter();
@@ -205,10 +337,12 @@ const currentWeek = ref(1);
 const prevWeek = () => {
   if (currentWeek.value > 1) currentWeek.value--;
   loadSchedule(); // 重新加载当前周的课表
+  loadBusySlots();
 };
 const nextWeek = () => {
   if (currentWeek.value < 20) currentWeek.value++;
   loadSchedule(); // 重新加载当前周的课表
+  loadBusySlots();
 };
 
 // 加载课表数据
@@ -232,8 +366,8 @@ const loadSchedule = async () => {
     }
   } catch (error) {
     console.error('Failed to load schedule:', error);
-    uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
-  }
+      uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
+    }
 };
 
 const loadLogs = () => {
@@ -277,6 +411,10 @@ const getPeriodName = (row) => {
 const handleSlotClick = (row, col) => {
   if (isSelectingTarget.value) {
     // 正在选择目标位置
+    if (isSlotBusy(row, col)) {
+      uni.showToast({ title: 'Teacher busy at this time', icon: 'none' });
+      return;
+    }
     moveCourseToTarget(row, col);
   } else if (selectedCourse.value) {
     // 如果已经有选中的课程，点击空白地方应该取消选择
@@ -297,6 +435,10 @@ const handleSlotClick = (row, col) => {
       };
     } else {
       // 空时间段，显示添加新课程选项
+      if (isSlotBusy(row, col)) {
+        uni.showToast({ title: 'Teacher busy at this time', icon: 'none' });
+        return;
+      }
       newCourseSlot.value = { row, col, week: currentWeek.value };
       isAddingNewCourse.value = true;
     }
@@ -457,13 +599,198 @@ const closeSidebar = () => {
 };
 
 // 显示teacher占位符弹窗
-const showTeacherPlaceholder = () => {
-  showTeacherModal.value = true;
+const openTeacherPlanModal = () => {
+  planClassName.value = '';
+  planWeekType.value = 'continuous';
+  planStartWeek.value = currentWeek.value;
+  planEndWeek.value = currentWeek.value;
+  planSelectedWeeks.value = [];
+  planSelectedSlots.value = new Set();
+  showTeacherPlanModal.value = true;
 };
 
-// 关闭teacher占位符弹窗
-const closeTeacherModal = () => {
-  showTeacherModal.value = false;
+const closeTeacherPlanModal = () => {
+  showTeacherPlanModal.value = false;
+};
+
+const togglePlanWeek = (w) => {
+  const idx = planSelectedWeeks.value.indexOf(w);
+  if (idx >= 0) planSelectedWeeks.value.splice(idx, 1);
+  else planSelectedWeeks.value.push(w);
+};
+
+const isPlanSelected = (row, col) => {
+  return planSelectedSlots.value.has(`${row}-${col}`);
+};
+
+const togglePlanSlot = (row, col) => {
+  const key = `${row}-${col}`;
+  const next = new Set(planSelectedSlots.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  planSelectedSlots.value = next; // 触发响应
+};
+
+const buildWeeks = () => {
+  if (planWeekType.value === 'continuous') {
+    const res = [];
+    for (let w = planStartWeek.value; w <= planEndWeek.value; w++) res.push(w);
+    return res;
+  }
+  return [...planSelectedWeeks.value];
+};
+
+const saveTeacherPlan = async () => {
+  if (userType.value !== 'teacher') {
+    uni.showToast({ title: 'Only teachers can use this', icon: 'none' });
+    return;
+  }
+  if (!planClassName.value.trim()) {
+    uni.showToast({ title: 'Please enter class ID', icon: 'none' });
+    return;
+  }
+  const weeks = buildWeeks();
+  if (weeks.length === 0) {
+    uni.showToast({ title: 'Please select weeks', icon: 'none' });
+    return;
+  }
+  const slots = Array.from(planSelectedSlots.value).map(k => {
+    const [r, c] = k.split('-').map(n => parseInt(n));
+    return { row: r, col: c };
+  });
+  if (slots.length === 0) {
+    uni.showToast({ title: 'Please select at least one slot', icon: 'none' });
+    return;
+  }
+  try {
+    const res = await uni.request({
+      url: 'http://localhost:8080/api/teacher/teach-schedule/overwrite-batch',
+      method: 'POST',
+      header: { 'Content-Type': 'application/json' },
+      data: {
+        teacherId: userID.value,
+        className: planClassName.value.trim(),
+        weeks,
+        slots
+      }
+    });
+    if (res.statusCode === 200) {
+      uni.showToast({ title: 'Saved', icon: 'success' });
+      showTeacherPlanModal.value = false;
+      await loadBusySlots();
+    } else {
+      uni.showToast({ title: res.data.error || 'Save failed', icon: 'none' });
+    }
+  } catch (e) {
+    uni.showToast({ title: 'Save failed', icon: 'none' });
+  }
+};
+
+const clearAllTeacherPlans = async () => {
+  if (userType.value !== 'teacher') {
+    uni.showToast({ title: 'Only teachers can use this', icon: 'none' });
+    return;
+  }
+  const wasOpen = showTeacherPlanModal.value;
+  // 暂时关闭录入弹窗，避免遮挡系统确认框
+  showTeacherPlanModal.value = false;
+  uni.showModal({
+    title: 'Confirm',
+    content: 'This will clear ALL your plans across all classes and weeks. Continue?',
+    success: async (res) => {
+      if (!res.confirm) {
+        if (wasOpen) showTeacherPlanModal.value = true;
+        return;
+      }
+      try {
+        const result = await uni.request({
+          url: `http://localhost:8080/api/teacher/teach-schedule/all?teacherId=${encodeURIComponent(userID.value)}`,
+          method: 'DELETE',
+        });
+        if (result.statusCode === 200) {
+          uni.showToast({ title: 'All plans cleared', icon: 'success' });
+          // 保持关闭状态
+          await loadBusySlots();
+        } else {
+          uni.showToast({ title: result.data.error || 'Clear failed', icon: 'none' });
+          if (wasOpen) showTeacherPlanModal.value = true;
+        }
+      } catch (e) {
+        uni.showToast({ title: 'Clear failed', icon: 'none' });
+        if (wasOpen) showTeacherPlanModal.value = true;
+      }
+    },
+    fail: () => {
+      if (wasOpen) showTeacherPlanModal.value = true;
+    }
+  });
+};
+
+const isSlotBusy = (row, col) => {
+  return busySlots.value.has(`${row}-${col}`);
+};
+
+// 查看计划（只读）
+const viewerWeek = ref(1);
+const viewerBusy = ref({}); // key -> [className,...]
+const openTeacherPlanViewer = async () => {
+  viewerWeek.value = currentWeek.value;
+  await loadViewerBusy();
+  showTeacherPlanViewer.value = true;
+};
+const closeTeacherPlanViewer = () => { showTeacherPlanViewer.value = false; };
+const prevViewerWeek = async () => { if (viewerWeek.value > 1) viewerWeek.value--; await loadViewerBusy(); };
+const nextViewerWeek = async () => { if (viewerWeek.value < 20) viewerWeek.value++; await loadViewerBusy(); };
+const isViewerBusy = (row, col) => {
+  const key = `${row}-${col}`;
+  const arr = viewerBusy.value[key];
+  return Array.isArray(arr) && arr.length > 0;
+};
+const getViewerClassText = (row, col) => {
+  const key = `${row}-${col}`;
+  const arr = viewerBusy.value[key] || [];
+  // 将每个 classId 格式化为 “第3位和第4位/最后一位”，不足位数的做保护
+  const fmt = (idStr) => {
+    const s = String(idStr);
+    const third = s.length >= 3 ? s[2] : '';
+    const fourth = s.length >= 4 ? s[3] : '';
+    const last = s.length >= 1 ? s[s.length - 1] : '';
+    return `${third}${fourth}/${last}`;
+  };
+  return arr.map(fmt).join('/');
+};
+const loadViewerBusy = async () => {
+  try {
+    const res = await uni.request({
+      url: `http://localhost:8080/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${viewerWeek.value}`,
+      method: 'GET'
+    });
+    if (res.statusCode === 200) {
+      const map = {};
+      (res.data.slots || []).forEach(s => {
+        const key = `${s.row}-${s.col}`;
+        if (!map[key]) map[key] = [];
+        const text = (s.classId !== undefined && s.classId !== null) ? String(s.classId) : '';
+        if (text && !map[key].includes(text)) map[key].push(text);
+      });
+      viewerBusy.value = map;
+    }
+  } catch (e) {}
+};
+
+const loadBusySlots = async () => {
+  if (userType.value !== 'teacher' || !userID.value) return;
+  try {
+    const res = await uni.request({
+      url: `http://localhost:8080/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${currentWeek.value}&excludeClassName=${encodeURIComponent(currentClass.value || '')}`,
+      method: 'GET'
+    });
+    if (res.statusCode === 200) {
+      const set = new Set();
+      (res.data.slots || []).forEach(s => set.add(`${s.row}-${s.col}`));
+      busySlots.value = set;
+    }
+  } catch (e) {}
 };
 
 // 获取用户类型
@@ -471,6 +798,7 @@ const getUserType = () => {
   const userInfo = uni.getStorageSync('userInfo');
   if (userInfo && userInfo.userType) {
     userType.value = userInfo.userType;
+    userID.value = userInfo.userID || '';
   } else {
     // 如果没有存储的用户信息，默认为user类型
     userType.value = 'user';
@@ -480,13 +808,15 @@ const getUserType = () => {
 onMounted(() => {
   getUserType();
   loadClasses();
-  loadLogs();
+    loadLogs();
+  loadBusySlots();
 });
 
 // 页面显示时刷新数据
 onLoad(() => {
   getUserType();
   loadClasses();
+  loadBusySlots();
 });
 </script>
 
@@ -617,6 +947,7 @@ onLoad(() => {
   padding: 0;
   flex: 1;
   overflow-y: auto;
+  padding-bottom: 80px; /* 预留底部空间，避免被底部按钮遮挡 */
 }
 
 .sidebar li {
@@ -630,6 +961,8 @@ onLoad(() => {
 .sidebar li:hover {
   background: rgba(0, 0, 0, 0.05);
 }
+
+/* 移除侧边栏底部按钮样式（不再使用） */
 
 /* Teacher专用占位符样式 */
 .teacher-placeholder {
@@ -680,6 +1013,9 @@ onLoad(() => {
   width: 90%;
   text-align: center;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  max-height: 80vh; /* 弹窗内容最大高度 */
+  overflow-y: auto;  /* 竖向滚动 */
+  -webkit-overflow-scrolling: touch;
 }
 
 .close-btn {
@@ -1332,4 +1668,34 @@ onLoad(() => {
 .slot-btn:hover {
   background-color: #f0f0f0;
 }
+
+.slot-btn.busy {
+  background: rgba(220, 53, 69, 0.2);
+  border-color: #dc3545;
+}
+
+/* 弹窗内计划表样式复用 register_class 弹窗风格 */
+.teacher-plan-header h4 {
+  margin: 0 0 8px 0;
+  color: #007bff;
+}
+.teacher-plan-body .input-group label { font-weight: bold; }
+.plan-input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+.week-type-buttons { display: flex; gap: 8px; margin: 8px 0; }
+.week-type-btn { flex: 1; padding: 8px; border: 1px solid #ddd; background: #fff; border-radius: 6px; }
+.week-type-btn.active { border-color: #007bff; background: #e3f2fd; color: #007bff; }
+.week-range { display: flex; gap: 10px; }
+.range-input { flex: 1; }
+.week-select { width: 100%; padding: 6px; }
+.week-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 260px; }
+.week-number-btn { aspect-ratio: 1; border: 1px solid #ddd; border-radius: 6px; }
+.week-number-btn.selected { background: #007bff; color: #fff; border-color: #007bff; }
+.plan-grid-wrapper { margin-top: 10px; }
+.plan-grid-title { font-weight: bold; margin-bottom: 6px; }
+.plan-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.plan-table th, .plan-table td { border: 1px solid #000; text-align: center; }
+.plan-slot { width: 40px !important; height: 50px !important; min-width: 40px !important; min-height: 50px !important; }
+.teacher-plan-footer { margin-top: 10px; display: flex; gap: 10px; justify-content: flex-end; }
+.save-btn { background: #28a745; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; }
+.teacher-plan-footer .clear-btn { background: #dc3545; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; }
 </style>

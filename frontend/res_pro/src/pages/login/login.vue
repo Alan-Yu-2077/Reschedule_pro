@@ -43,7 +43,8 @@
           // 存储用户信息到本地存储
           uni.setStorageSync('userInfo', {
             userType: userType,
-            username: username.value
+            username: username.value,
+            userID: res.data.userID || ''
           });
           
           if (userType === 'admin') {
