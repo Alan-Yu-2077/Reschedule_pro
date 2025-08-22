@@ -29,7 +29,9 @@ type WeeklySchedule struct {
 // ActivityLog 活动日志
 type ActivityLog struct {
 	gorm.Model
-	Message string `json:"message" gorm:"not null"`
+	Message  string `json:"message" gorm:"not null"`
+	ClassID  uint   `json:"classId" gorm:"index"`
+	Operator string `json:"operator" gorm:"size:64"`
 }
 
 // TeacherTeachSlot 教师在某班的授课占位（用于跨班冲突判定）

@@ -21,217 +21,134 @@ type CourseAssignmentData struct {
 	SelectedWeeks []int  `json:"selectedWeeks"`
 }
 
-// SaveSchedule 保存课程表数据
+// SaveSchedule 保存课程表数据（批量导入不记录操作者场景）
 func SaveSchedule(data ScheduleData) error {
-	// 1. 创建或获取班级
 	var class models.Class
 	result := database.DB.Where("name = ?", data.ClassName).First(&class)
 	if result.Error != nil {
-		// 班级不存在，创建新班级
 		class = models.Class{Name: data.ClassName}
 		if err := database.DB.Create(&class).Error; err != nil {
 			return err
 		}
 	}
-
-	// 2. 处理课程表数据
 	for row := 0; row < len(data.Schedule); row++ {
 		for col := 0; col < len(data.Schedule[row]); col++ {
 			courseData := data.Schedule[row][col]
 			if courseData == nil {
 				continue
 			}
-
-			// 3. 创建或获取课程
 			var course models.Course
 			result := database.DB.Where("name = ?", courseData.Name).First(&course)
 			if result.Error != nil {
-				// 课程不存在，创建新课程
 				course = models.Course{Name: courseData.Name}
 				if err := database.DB.Create(&course).Error; err != nil {
 					return err
 				}
 			}
-
-			// 4. 生成周记录
 			var weeks []int
 			if courseData.WeekType == "continuous" {
-				// 连续周
-				for week := courseData.StartWeek; week <= courseData.EndWeek; week++ {
-					weeks = append(weeks, week)
+				for w := courseData.StartWeek; w <= courseData.EndWeek; w++ {
+					weeks = append(weeks, w)
 				}
 			} else {
-				// 离散周
 				weeks = courseData.SelectedWeeks
 			}
-
-			// 5. 为每一周创建记录
 			for _, week := range weeks {
-				weeklySchedule := models.WeeklySchedule{
-					ClassID:     class.ID,
-					CourseID:    course.ID,
-					WeekNumber:  week,
-					TimeSlotRow: row,
-					TimeSlotCol: col,
-				}
-
+				weeklySchedule := models.WeeklySchedule{ClassID: class.ID, CourseID: course.ID, WeekNumber: week, TimeSlotRow: row, TimeSlotCol: col}
 				if err := database.DB.Create(&weeklySchedule).Error; err != nil {
 					return err
 				}
 			}
 		}
 	}
-
 	return nil
 }
 
-// GetScheduleByClass 根据班级名获取课程表
 func GetScheduleByClass(className string, weekNumber int) ([]models.WeeklySchedule, error) {
 	var schedules []models.WeeklySchedule
-
-	err := database.DB.Preload("Class").Preload("Course").
-		Joins("JOIN classes ON classes.id = weekly_schedules.class_id").
-		Where("classes.name = ? AND weekly_schedules.week_number = ?", className, weekNumber).
-		Find(&schedules).Error
-
+	err := database.DB.Preload("Class").Preload("Course").Joins("JOIN classes ON classes.id = weekly_schedules.class_id").Where("classes.name = ? AND weekly_schedules.week_number = ?", className, weekNumber).Find(&schedules).Error
 	return schedules, err
 }
 
-// GetAllClasses 获取所有班级
 func GetAllClasses() ([]models.Class, error) {
 	var classes []models.Class
 	err := database.DB.Find(&classes).Error
 	return classes, err
 }
 
-// DeleteSchedule 删除指定时间槽的课程
-func DeleteSchedule(className string, weekNumber int, timeSlotRow int, timeSlotCol int) error {
-	// 1. 获取班级ID
+// DeleteSchedule 删除指定时间槽的课程（记录操作者）
+func DeleteSchedule(className string, weekNumber int, timeSlotRow int, timeSlotCol int, operator string) error {
 	var class models.Class
 	if err := database.DB.Where("name = ?", className).First(&class).Error; err != nil {
 		return err
 	}
-
-	// 2. 删除指定时间槽的课程记录
-	result := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
-		class.ID, weekNumber, timeSlotRow, timeSlotCol).Delete(&models.WeeklySchedule{})
-
+	result := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?", class.ID, weekNumber, timeSlotRow, timeSlotCol).Delete(&models.WeeklySchedule{})
 	if result.Error != nil {
 		return result.Error
 	}
-
+	_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Deleted course at week "+strconv.Itoa(weekNumber)+", ("+strconv.Itoa(timeSlotRow)+","+strconv.Itoa(timeSlotCol)+")")
 	return nil
 }
 
-// MoveSchedule 移动课程从源位置到目标位置（支持跨周）
-func MoveSchedule(className string, sourceWeek int, sourceRow int, sourceCol int, targetWeek int, targetRow int, targetCol int) error {
-	// 1. 获取班级ID
+// MoveSchedule 移动课程（记录操作者）
+func MoveSchedule(className string, sourceWeek int, sourceRow int, sourceCol int, targetWeek int, targetRow int, targetCol int, operator string) error {
 	var class models.Class
 	if err := database.DB.Where("name = ?", className).First(&class).Error; err != nil {
 		return err
 	}
-
-	// 2. 检查源位置是否有课程
 	var sourceSchedule models.WeeklySchedule
-	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
-		class.ID, sourceWeek, sourceRow, sourceCol).First(&sourceSchedule).Error; err != nil {
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?", class.ID, sourceWeek, sourceRow, sourceCol).First(&sourceSchedule).Error; err != nil {
 		return err
 	}
-
-	// 3. 检查目标位置是否为空
 	var targetSchedule models.WeeklySchedule
-	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
-		class.ID, targetWeek, targetRow, targetCol).First(&targetSchedule).Error; err == nil {
-		// 目标位置已有课程，返回错误
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?", class.ID, targetWeek, targetRow, targetCol).First(&targetSchedule).Error; err == nil {
 		return err
 	}
-
-	// 4. 创建新的目标记录
-	targetSchedule = models.WeeklySchedule{
-		ClassID:     sourceSchedule.ClassID,
-		CourseID:    sourceSchedule.CourseID,
-		WeekNumber:  targetWeek,
-		TimeSlotRow: targetRow,
-		TimeSlotCol: targetCol,
-	}
-
+	targetSchedule = models.WeeklySchedule{ClassID: sourceSchedule.ClassID, CourseID: sourceSchedule.CourseID, WeekNumber: targetWeek, TimeSlotRow: targetRow, TimeSlotCol: targetCol}
 	if err := database.DB.Create(&targetSchedule).Error; err != nil {
 		return err
 	}
-
-	// 5. 删除源记录
 	if err := database.DB.Delete(&sourceSchedule).Error; err != nil {
 		return err
 	}
-
+	_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Moved course from week "+strconv.Itoa(sourceWeek)+" ("+strconv.Itoa(sourceRow)+","+strconv.Itoa(sourceCol)+") to week "+strconv.Itoa(targetWeek)+" ("+strconv.Itoa(targetRow)+","+strconv.Itoa(targetCol)+")")
 	return nil
 }
 
-// AddSchedule 添加新课程到指定时间槽
-func AddSchedule(className string, courseName string, weekNumber int, timeSlotRow int, timeSlotCol int) error {
-	// 1. 获取或创建班级
+// AddSchedule 添加新课程（记录操作者）
+func AddSchedule(className string, courseName string, weekNumber int, timeSlotRow int, timeSlotCol int, operator string) error {
 	var class models.Class
 	result := database.DB.Where("name = ?", className).First(&class)
 	if result.Error != nil {
-		// 班级不存在，创建新班级
 		class = models.Class{Name: className}
 		if err := database.DB.Create(&class).Error; err != nil {
-			// 记录错误日志
-			logService := NewLogService()
-			logService.AddLog("Failed to create class: " + className + " - " + err.Error())
+			NewLogService().AddLog("Failed to create class: " + className + " - " + err.Error())
 			return err
 		}
-		// 记录创建班级日志
-		logService := NewLogService()
-		logService.AddLog("Created new class: " + className)
+		// 记录创建新班级的日志（没有操作者，因为这是系统自动创建的）
+		NewLogService().AddLog("Created new class: " + className)
 	}
-
-	// 2. 获取或创建课程
 	var course models.Course
 	result = database.DB.Where("name = ?", courseName).First(&course)
 	if result.Error != nil {
-		// 课程不存在，创建新课程
 		course = models.Course{Name: courseName}
 		if err := database.DB.Create(&course).Error; err != nil {
-			// 记录错误日志
-			logService := NewLogService()
-			logService.AddLog("Failed to create course: " + courseName + " - " + err.Error())
+			NewLogService().AddLog("Failed to create course: " + courseName + " - " + err.Error())
 			return err
 		}
-		// 记录创建课程日志
-		logService := NewLogService()
-		logService.AddLog("Created new course: " + courseName)
+		// 记录创建新课程的日志（没有操作者，因为这是系统自动创建的）
+		NewLogService().AddLog("Created new course: " + courseName)
 	}
-
-	// 3. 检查目标位置是否已有课程
 	var existingSchedule models.WeeklySchedule
-	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?",
-		class.ID, weekNumber, timeSlotRow, timeSlotCol).First(&existingSchedule).Error; err == nil {
-		// 目标位置已有课程，返回错误
-		logService := NewLogService()
-		logService.AddLog("Failed to add course: slot already occupied")
+	if err := database.DB.Where("class_id = ? AND week_number = ? AND time_slot_row = ? AND time_slot_col = ?", class.ID, weekNumber, timeSlotRow, timeSlotCol).First(&existingSchedule).Error; err == nil {
+		_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Failed to add course: slot already occupied at week "+strconv.Itoa(weekNumber)+" ("+strconv.Itoa(timeSlotRow)+","+strconv.Itoa(timeSlotCol)+")")
 		return err
 	}
-
-	// 4. 创建新的课程记录
-	weeklySchedule := models.WeeklySchedule{
-		ClassID:     class.ID,
-		CourseID:    course.ID,
-		WeekNumber:  weekNumber,
-		TimeSlotRow: timeSlotRow,
-		TimeSlotCol: timeSlotCol,
-	}
-
+	weeklySchedule := models.WeeklySchedule{ClassID: class.ID, CourseID: course.ID, WeekNumber: weekNumber, TimeSlotRow: timeSlotRow, TimeSlotCol: timeSlotCol}
 	if err := database.DB.Create(&weeklySchedule).Error; err != nil {
-		// 记录错误日志
-		logService := NewLogService()
-		logService.AddLog("Failed to create weekly schedule: " + err.Error())
+		_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Failed to create weekly schedule: "+err.Error())
 		return err
 	}
-
-	// 记录成功日志
-	logService := NewLogService()
-	logService.AddLog("Added course: " + courseName + " to " + className + " Week " + strconv.Itoa(weekNumber))
-
+	_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Added course '"+courseName+"' week "+strconv.Itoa(weekNumber)+" at ("+strconv.Itoa(timeSlotRow)+","+strconv.Itoa(timeSlotCol)+")")
 	return nil
 }

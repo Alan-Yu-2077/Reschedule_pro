@@ -283,6 +283,7 @@ const planSelectedWeeks = ref([]);
 const planSelectedSlots = ref(new Set()); // key: `${row}-${col}`
 const busySlots = ref(new Set()); // 当前周的忙碌集合，key: `${row}-${col}`
 const userID = ref('');
+const nameToId = ref({});
 
 // 加载班级列表
 const loadClasses = async () => {
@@ -298,13 +299,26 @@ const loadClasses = async () => {
     console.log('Classes API response:', response);
 
     if (response.statusCode === 200) {
-      classList.value = response.data.classes.map(cls => cls.name);
+      const classes = response.data.classes || [];
+      console.log('Raw classes data:', classes);
+      
+      classList.value = classes.map(cls => cls.name);
+      const map = {};
+      classes.forEach(c => { 
+        const id = c.ID ?? c.id ?? c.Id;
+        map[c.name] = id;
+        console.log(`Mapping class "${c.name}" to ID:`, id);
+      });
+      nameToId.value = map;
+      console.log('Final nameToId mapping:', nameToId.value);
       console.log('Classes loaded:', classList.value);
       
       // 如果有班级，选择第一个
       if (classList.value.length > 0 && !currentClass.value) {
         currentClass.value = classList.value[0];
+        console.log('Set current class to:', currentClass.value);
         loadSchedule();
+        loadLogs();
       }
     } else {
       console.error('Failed to load classes, status:', response.statusCode);
@@ -317,6 +331,7 @@ const loadClasses = async () => {
 };
 
 const selectClass = (cls) => {
+  console.log('Selecting class:', cls);
   currentClass.value = cls;
   logs.value.push(`Switched to class: ${cls}`);
   loadSchedule();
@@ -370,19 +385,44 @@ const loadSchedule = async () => {
     }
 };
 
-const loadLogs = () => {
-  uni.request({
-    url: 'http://localhost:8080/admin/logs',
-    method: 'GET',
-    success: (res) => {
-      if (res.statusCode === 200) {
-        logs.value = res.data.logs || [];
-      }
-    },
-    fail: () => {
-      uni.showToast({ title: 'Failed to load logs', icon: 'none' });
+// 班级日志（从 admin/logs 获取后前端过滤）
+const loadLogs = async () => {
+  if (!currentClass.value) return;
+  try {
+    const res = await uni.request({ url: 'http://localhost:8080/admin/logs', method: 'GET' });
+    if (res.statusCode === 200) {
+      const clsId = nameToId.value[currentClass.value];
+      console.log('Raw logs response:', res.data.logs);
+      console.log('Current class:', currentClass.value);
+      console.log('Class ID mapping:', nameToId.value);
+      console.log('Filtered class ID:', clsId);
+      
+      const items = (res.data.logs || [])
+        .filter(l => l.classId === clsId)
+        .map(l => {
+          console.log('Processing log entry:', l);
+          const ts = (l.CreatedAt || '').replace('T',' ').split('.')[0];
+          const operator = l.operator || l.Operator || '';
+          const message = l.message || l.Message || '';
+          console.log('Timestamp:', ts, 'Operator:', operator, 'Message:', message);
+          if (operator) {
+            return `${ts} - ${operator}: ${message}`;
+          } else {
+            return `${ts} - ${message}`;
+          }
+        })
+        .sort((a, b) => {
+          // 按时间戳排序，最新的在顶端
+          const timeA = new Date(a.split(' - ')[0]);
+          const timeB = new Date(b.split(' - ')[0]);
+          return timeB - timeA;
+        });
+      console.log('Final log items:', items);
+      logs.value = items;
     }
-  });
+  } catch (e) {
+    console.error('Error loading logs:', e);
+  }
 };
 
 // 根据时间段位置获取课程名称
@@ -467,20 +507,29 @@ const addNewCourse = async (courseName) => {
   
   if (!newCourseSlot.value) return;
   
+  const userInfo = uni.getStorageSync('userInfo');
+  const operator = userInfo ? userInfo.username : 'unknown';
+  console.log('Adding course with operator:', operator);
+  console.log('User info from storage:', userInfo);
+  
   try {
+    const requestData = {
+      className: currentClass.value,
+      courseName: courseName.trim(),
+      weekNumber: newCourseSlot.value.week,
+      timeSlotRow: newCourseSlot.value.row,
+      timeSlotCol: newCourseSlot.value.col,
+      operator: operator
+    };
+    console.log('Request data for add course:', requestData);
+    
     const response = await uni.request({
       url: 'http://localhost:8080/api/schedule/add',
       method: 'POST',
       header: {
         'Content-Type': 'application/json'
       },
-      data: {
-        className: currentClass.value,
-        courseName: courseName.trim(),
-        weekNumber: newCourseSlot.value.week,
-        timeSlotRow: newCourseSlot.value.row,
-        timeSlotCol: newCourseSlot.value.col
-      }
+      data: requestData
     });
 
     if (response.statusCode === 200) {
@@ -502,19 +551,27 @@ const addNewCourse = async (courseName) => {
 const deleteCourse = async () => {
   if (!selectedCourse.value) return;
   
+  const userInfo = uni.getStorageSync('userInfo');
+  const operator = userInfo ? userInfo.username : 'unknown';
+  console.log('Deleting course with operator:', operator);
+  
   try {
+    const requestData = {
+      className: currentClass.value,
+      weekNumber: selectedCourse.value.sourceWeek, // 删除源周数的课程
+      timeSlotRow: selectedCourse.value.row,
+      timeSlotCol: selectedCourse.value.col,
+      operator: operator
+    };
+    console.log('Request data for delete course:', requestData);
+    
     const response = await uni.request({
       url: 'http://localhost:8080/api/schedule/delete',
       method: 'DELETE',
       header: {
         'Content-Type': 'application/json'
       },
-      data: {
-        className: currentClass.value,
-        weekNumber: selectedCourse.value.sourceWeek, // 删除源周数的课程
-        timeSlotRow: selectedCourse.value.row,
-        timeSlotCol: selectedCourse.value.col
-      }
+      data: requestData
     });
 
     if (response.statusCode === 200) {
@@ -555,22 +612,30 @@ const moveCourseToTarget = async (targetRow, targetCol) => {
   // 直接使用当前周数作为目标周数
   const targetWeek = currentWeek.value;
   
+  const userInfo = uni.getStorageSync('userInfo');
+  const operator = userInfo ? userInfo.username : 'unknown';
+  console.log('Moving course with operator:', operator);
+  
   try {
+    const requestData = {
+      className: currentClass.value,
+      sourceWeek: selectedCourse.value.sourceWeek, // 使用选中的源周数
+      sourceRow: selectedCourse.value.row,
+      sourceCol: selectedCourse.value.col,
+      targetWeek: targetWeek,
+      targetRow: targetRow,
+      targetCol: targetCol,
+      operator: operator
+    };
+    console.log('Request data for move course:', requestData);
+    
     const response = await uni.request({
       url: 'http://localhost:8080/api/schedule/move',
       method: 'POST',
       header: {
         'Content-Type': 'application/json'
       },
-      data: {
-        className: currentClass.value,
-        sourceWeek: selectedCourse.value.sourceWeek, // 使用选中的源周数
-        sourceRow: selectedCourse.value.row,
-        sourceCol: selectedCourse.value.col,
-        targetWeek: targetWeek,
-        targetRow: targetRow,
-        targetCol: targetCol
-      }
+      data: requestData
     });
 
     if (response.statusCode === 200) {
@@ -671,7 +736,8 @@ const saveTeacherPlan = async () => {
         teacherId: userID.value,
         className: planClassName.value.trim(),
         weeks,
-        slots
+        slots,
+        operator: uni.getStorageSync('userInfo').username // 添加操作人
       }
     });
     if (res.statusCode === 200) {
@@ -749,9 +815,9 @@ const isViewerBusy = (row, col) => {
 const getViewerClassText = (row, col) => {
   const key = `${row}-${col}`;
   const arr = viewerBusy.value[key] || [];
-  // 将每个 classId 格式化为 “第3位和第4位/最后一位”，不足位数的做保护
-  const fmt = (idStr) => {
-    const s = String(idStr);
+  // 将每个 className 格式化为 “第3位和第4位/最后一位”，不足位数的做保护
+  const fmt = (nameStr) => {
+    const s = String(nameStr);
     const third = s.length >= 3 ? s[2] : '';
     const fourth = s.length >= 4 ? s[3] : '';
     const last = s.length >= 1 ? s[s.length - 1] : '';
@@ -770,7 +836,8 @@ const loadViewerBusy = async () => {
       (res.data.slots || []).forEach(s => {
         const key = `${s.row}-${s.col}`;
         if (!map[key]) map[key] = [];
-        const text = (s.classId !== undefined && s.classId !== null) ? String(s.classId) : '';
+        // 使用 className 作为来源字符串
+        const text = (s.className !== undefined && s.className !== null) ? String(s.className) : '';
         if (text && !map[key].includes(text)) map[key].push(text);
       });
       viewerBusy.value = map;
@@ -796,19 +863,23 @@ const loadBusySlots = async () => {
 // 获取用户类型
 const getUserType = () => {
   const userInfo = uni.getStorageSync('userInfo');
+  console.log('Getting user type from storage:', userInfo);
   if (userInfo && userInfo.userType) {
     userType.value = userInfo.userType;
     userID.value = userInfo.userID || '';
+    console.log('Set user type to:', userType.value);
+    console.log('Set user ID to:', userID.value);
   } else {
     // 如果没有存储的用户信息，默认为user类型
     userType.value = 'user';
+    console.log('No user info found, defaulting to user type');
   }
 };
 
 onMounted(() => {
   getUserType();
   loadClasses();
-    loadLogs();
+  loadLogs();
   loadBusySlots();
 });
 
@@ -1086,8 +1157,8 @@ onLoad(() => {
   .schedule-body {
     flex: 1;
     min-height: 0;
-    padding: 4px 0;
-    overflow: visible;
+    padding: 4px;
+    overflow: hidden;
     border: 1px dashed #000;
     display: flex;
     align-items: center;
@@ -1601,14 +1672,14 @@ onLoad(() => {
   background-color: #eaeaea;
   font-weight: bold;
   font-size: 0.8em;
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   padding: 8px;
 }
 
 .schedule-table td {
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   vertical-align: middle;
   padding: 0;
 }
@@ -1623,16 +1694,21 @@ onLoad(() => {
 }
 
 .slot-btn {
-  width: 40px !important;
-  min-width: 40px !important;
-  height: 50px !important;
-  min-height: 50px !important;
-  font-size: 0.8em;
-  padding: 0;
+  width: 60px !important;
+  min-width: 60px !important;
+  height: 60px !important;
+  min-height: 60px !important;
+  font-size: 0.75em;
+  line-height: 1.2;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow: hidden;
+  text-align: center;
 }
 
 .slot-btn.selected {
@@ -1655,15 +1731,17 @@ onLoad(() => {
 }
 
 .slot-btn {
-  font-size: 0.85em;
+  font-size: 0.75em;
+  line-height: 1.2;
   transition: background-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  white-space: nowrap;
+  word-wrap: break-word;
+  word-break: break-word;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
 }
 .slot-btn:hover {
   background-color: #f0f0f0;

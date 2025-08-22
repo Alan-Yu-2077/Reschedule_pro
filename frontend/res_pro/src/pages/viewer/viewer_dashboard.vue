@@ -87,6 +87,7 @@ const currentClass = ref('');
 const logs = ref([]);
 const scheduleData = ref([]);
 const sidebarExpanded = ref(false); // 侧边栏默认收起
+const nameToId = ref({});
 
 // 加载班级列表
 const loadClasses = async () => {
@@ -99,28 +100,37 @@ const loadClasses = async () => {
       }
     });
 
-    console.log('Classes API response:', response);
-
     if (response.statusCode === 200) {
-      classList.value = response.data.classes.map(cls => cls.name);
-      console.log('Classes loaded:', classList.value);
+      const classes = response.data.classes || [];
+      console.log('Viewer - Raw classes data:', classes);
       
-      // 如果有班级，选择第一个
+      classList.value = classes.map(cls => cls.name);
+      const map = {};
+      classes.forEach(c => { 
+        const id = c.ID ?? c.id ?? c.Id;
+        map[c.name] = id;
+        console.log(`Viewer - Mapping class "${c.name}" to ID:`, id);
+      });
+      nameToId.value = map;
+      console.log('Viewer - Final nameToId mapping:', nameToId.value);
+      
       if (classList.value.length > 0 && !currentClass.value) {
         currentClass.value = classList.value[0];
+        console.log('Viewer - Set current class to:', currentClass.value);
         loadSchedule();
+        loadLogs();
       }
     } else {
-      console.error('Failed to load classes, status:', response.statusCode);
       uni.showToast({ title: 'Failed to load classes', icon: 'none' });
     }
   } catch (error) {
-    console.error('Failed to load classes:', error);
+    console.error('Viewer - Error loading classes:', error);
     uni.showToast({ title: 'Failed to load classes', icon: 'none' });
   }
 };
 
 const selectClass = (cls) => {
+  console.log('Viewer - Selecting class:', cls);
   currentClass.value = cls;
   logs.value.push(`Switched to class: ${cls}`);
   loadSchedule();
@@ -149,34 +159,53 @@ const loadSchedule = async () => {
       method: 'GET'
     });
 
-    console.log('Schedule API response:', response);
-
     if (response.statusCode === 200) {
       scheduleData.value = response.data.schedules || [];
-      console.log('Schedule loaded for week', currentWeek.value, ':', scheduleData.value);
     } else {
-      console.error('Failed to load schedule, status:', response.statusCode);
       uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
     }
   } catch (error) {
-    console.error('Failed to load schedule:', error);
     uni.showToast({ title: 'Failed to load schedule', icon: 'none' });
   }
 };
 
-const loadLogs = () => {
-  uni.request({
-    url: 'http://localhost:8080/admin/logs',
-    method: 'GET',
-    success: (res) => {
-      if (res.statusCode === 200) {
-        logs.value = res.data.logs || [];
-      }
-    },
-    fail: () => {
-      uni.showToast({ title: 'Failed to load logs', icon: 'none' });
+const loadLogs = async () => {
+  if (!currentClass.value) return;
+  try {
+    const res = await uni.request({ url: 'http://localhost:8080/admin/logs', method: 'GET' });
+    if (res.statusCode === 200) {
+      const clsId = nameToId.value[currentClass.value];
+      console.log('Viewer - Raw logs response:', res.data.logs);
+      console.log('Viewer - Current class:', currentClass.value);
+      console.log('Viewer - Class ID mapping:', nameToId.value);
+      console.log('Viewer - Filtered class ID:', clsId);
+      
+      const items = (res.data.logs || [])
+        .filter(l => l.classId === clsId)
+        .map(l => {
+          console.log('Viewer - Processing log entry:', l);
+          const ts = (l.CreatedAt || '').replace('T',' ').split('.')[0];
+          const operator = l.operator || l.Operator || '';
+          const message = l.message || l.Message || '';
+          console.log('Viewer - Timestamp:', ts, 'Operator:', operator, 'Message:', message);
+          if (operator) {
+            return `${ts} - ${operator}: ${message}`;
+          } else {
+            return `${ts} - ${message}`;
+          }
+        })
+        .sort((a, b) => {
+          // 按时间戳排序，最新的在顶端
+          const timeA = new Date(a.split(' - ')[0]);
+          const timeB = new Date(b.split(' - ')[0]);
+          return timeB - timeA;
+        });
+      console.log('Viewer - Final log items:', items);
+      logs.value = items;
     }
-  });
+  } catch (e) {
+    console.error('Viewer - Error loading logs:', e);
+  }
 };
 
 // 根据时间段位置获取课程名称
@@ -185,37 +214,23 @@ const getCourseName = (row, col) => {
     schedule.timeSlotRow === row && 
     schedule.timeSlotCol === col
   );
-  
   return match ? match.course.name : '';
 };
 
 const logout = () => {
-  uni.clearStorageSync(); // 清除本地存储
+  uni.clearStorageSync();
   uni.showToast({ title: 'Logged out successfully', icon: 'success' });
   setTimeout(() => {
-    uni.reLaunch({
-      url: '/pages/login/login'
-    });
+    uni.reLaunch({ url: '/pages/login/login' });
   }, 1000);
 };
 
-const toggleSidebar = () => {
-  sidebarExpanded.value = !sidebarExpanded.value;
-};
+const toggleSidebar = () => { sidebarExpanded.value = !sidebarExpanded.value; };
+const closeSidebar = () => { sidebarExpanded.value = false; };
 
-const closeSidebar = () => {
-  sidebarExpanded.value = false;
-};
+onMounted(() => { loadClasses(); loadLogs(); });
 
-onMounted(() => {
-  loadClasses();
-  loadLogs();
-});
-
-// 页面显示时刷新数据
-onLoad(() => {
-  loadClasses();
-});
+onLoad(() => { loadClasses(); });
 </script>
 
 <style scoped>
@@ -459,8 +474,8 @@ onLoad(() => {
   .schedule-body {
     flex: 1;
     min-height: 0;
-    padding: 4px 0;
-    overflow: visible;
+    padding: 4px;
+    overflow: hidden;
     border: 1px dashed #000;
     display: flex;
     align-items: center;
@@ -468,8 +483,8 @@ onLoad(() => {
   }
   
   .schedule-table {
-    width: 90%;
-    max-width: 400px;
+    width: 100%;
+    max-width: 100%;
     font-size: 0.8em;
     table-layout: fixed;
   }
@@ -483,14 +498,14 @@ onLoad(() => {
   }
   
   .schedule-table th {
-    height: 30px;
-    min-height: 30px;
+    height: 40px;
+    min-height: 40px;
     padding: 2px;
   }
   
   .schedule-table td {
-    height: 30px;
-    min-height: 30px;
+    height: 40px;
+    min-height: 40px;
   }
   
   .schedule-table td:first-child {
@@ -501,15 +516,20 @@ onLoad(() => {
   }
   
   .slot-display {
-    width: 25px !important;
-    height: 30px !important;
-    min-width: 25px !important;
-    min-height: 30px !important;
-    padding: 2px;
-    font-size: 0.7em;
+    width: 35px !important;
+    height: 40px !important;
+    min-width: 35px !important;
+    min-height: 40px !important;
+    padding: 3px;
+    font-size: 0.65em;
+    line-height: 1.2;
     display: flex;
     align-items: center;
     justify-content: center;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow: hidden;
+    text-align: center;
   }
   
   .log-panel {
@@ -560,20 +580,20 @@ onLoad(() => {
   .schedule-table th,
   .schedule-table td {
     width: auto;
-    min-width: 20px;
+    min-width: 18px;
     font-size: 0.7em;
     padding: 2px;
   }
   
   .schedule-table th {
-    height: 25px;
-    min-height: 25px;
-    padding: 25px;
+    height: 33px;
+    min-height: 33px;
+    padding: 4px;
   }
   
   .schedule-table td {
-    height: 25px;
-    min-height: 25px;
+    height: 33px;
+    min-height: 33px;
   }
   
   .schedule-table td:first-child {
@@ -584,15 +604,20 @@ onLoad(() => {
   }
   
   .slot-display {
-    width: 20px !important;
-    height: 25px !important;
-    min-width: 20px !important;
-    min-height: 25px !important;
+    width: 28px !important;
+    height: 33px !important;
+    min-width: 28px !important;
+    min-height: 33px !important;
     padding: 2px;
     font-size: 0.6em;
+    line-height: 1.2;
     display: flex;
     align-items: center;
     justify-content: center;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow: hidden;
+    text-align: center;
   }
   
   .log-panel {
@@ -648,16 +673,17 @@ onLoad(() => {
   flex: 1;
   border: 2px dashed #000;
   margin-bottom: 10px;
-  padding: 15px 0;
+  padding: 15px;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 400px;
+  overflow: hidden;
 }
 
 .schedule-table {
   width: 100%;
-  max-width: 100vw;
+  max-width: 100%;
   margin: 0 auto;
   border-collapse: collapse;
   font-size: 1em;
@@ -670,10 +696,10 @@ onLoad(() => {
   border: 1px solid #000;
   padding: 0;
   font-size: 0.8em;
-  width: 40px;
-  min-width: 40px;
-  height: 50px;
-  min-height: 50px;
+  width: 50px;
+  min-width: 50px;
+  height: 60px;
+  min-height: 60px;
 }
 
 .schedule-table thead {
@@ -684,14 +710,14 @@ onLoad(() => {
   background-color: #eaeaea;
   font-weight: bold;
   font-size: 0.8em;
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   padding: 8px;
 }
 
 .schedule-table td {
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   vertical-align: middle;
   padding: 0;
 }
@@ -706,19 +732,21 @@ onLoad(() => {
 }
 
 .slot-display {
-  width: 40px !important;
-  min-width: 40px !important;
-  height: 50px !important;
-  min-height: 50px !important;
-  font-size: 0.8em;
-  padding: 0;
+  width: 50px !important;
+  min-width: 50px !important;
+  height: 60px !important;
+  min-height: 60px !important;
+  font-size: 0.75em;
+  line-height: 1.2;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  white-space: nowrap;
+  word-wrap: break-word;
+  word-break: break-word;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
   -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
   touch-action: manipulation; /* 优化触摸操作 */
 }
