@@ -111,6 +111,10 @@ func MoveSchedule(className string, sourceWeek int, sourceRow int, sourceCol int
 	if err := database.DB.Delete(&sourceSchedule).Error; err != nil {
 		return err
 	}
+	// 同步教师在该班该周的授课占位：若源位置存在教师占位，则随课程移动到目标位置
+	if err := syncTeacherSlotsOnMove(class.ID, sourceWeek, sourceRow, sourceCol, targetWeek, targetRow, targetCol); err != nil {
+		_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Teacher plan sync failed: "+err.Error())
+	}
 	_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Moved course from week "+strconv.Itoa(sourceWeek)+" ("+strconv.Itoa(sourceRow)+","+strconv.Itoa(sourceCol)+") to week "+strconv.Itoa(targetWeek)+" ("+strconv.Itoa(targetRow)+","+strconv.Itoa(targetCol)+")")
 	return nil
 }
@@ -150,5 +154,38 @@ func AddSchedule(className string, courseName string, weekNumber int, timeSlotRo
 		return err
 	}
 	_ = NewLogService().AddClassLogWithOperator(class.ID, operator, "Added course '"+courseName+"' week "+strconv.Itoa(weekNumber)+" at ("+strconv.Itoa(timeSlotRow)+","+strconv.Itoa(timeSlotCol)+")")
+	return nil
+}
+
+// syncTeacherSlotsOnMove 将教师在某班的授课占位从源位置移动到目标位置（若存在）
+// - 查找 teacher_teach_slots 中 class_id=classID 且 (week,row,col) 为源位置的记录
+// - 若目标位置已存在相同教师同班同周的占位：删除源位置记录
+// - 否则：更新为目标位置
+func syncTeacherSlotsOnMove(classID uint, sourceWeek int, sourceRow int, sourceCol int, targetWeek int, targetRow int, targetCol int) error {
+	var slots []models.TeacherTeachSlot
+	if err := database.DB.Where("class_id = ? AND week = ? AND row = ? AND col = ?", classID, sourceWeek, sourceRow, sourceCol).Find(&slots).Error; err != nil {
+		return err
+	}
+	if len(slots) == 0 {
+		return nil
+	}
+	for _, s := range slots {
+		var count int64
+		if err := database.DB.Model(&models.TeacherTeachSlot{}).Where("teacher_id = ? AND class_id = ? AND week = ? AND row = ? AND col = ?", s.TeacherID, classID, targetWeek, targetRow, targetCol).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			if err := database.DB.Delete(&s).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		s.Week = targetWeek
+		s.Row = targetRow
+		s.Col = targetCol
+		if err := database.DB.Save(&s).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -13,6 +13,7 @@ func TeacherRoutes(r *gin.Engine) {
 	teacherGroup := r.Group("/api/teacher")
 	{
 		teacherGroup.POST("/teach-schedule/overwrite-batch", overwriteTeacherTeachScheduleBatch)
+		teacherGroup.DELETE("/teach-schedule/all", clearAllTeacherPlans)
 		teacherGroup.GET("/teach-busy", getTeacherBusySlots)
 		teacherGroup.GET("/teach-plan", getTeacherPlan)
 		teacherGroup.GET("/classes", getTeacherClasses)
@@ -184,4 +185,18 @@ func getTeacherClasses(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"classes": classes})
+}
+
+// clearAllTeacherPlans 清空某教师的全部授课占位
+func clearAllTeacherPlans(c *gin.Context) {
+	teacherID := c.Query("teacherId")
+	if teacherID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "teacherId is required"})
+		return
+	}
+	if err := database.DB.Where("teacher_id = ?", teacherID).Delete(&models.TeacherTeachSlot{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear teacher plans"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "All plans cleared"})
 }

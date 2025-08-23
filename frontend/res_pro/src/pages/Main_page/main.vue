@@ -52,7 +52,7 @@
           </thead>
           <tbody>
             <tr v-for="(period, i) in ['Morning Slot 1', 'Morning Slot 2', 'Afternoon Slot 1', 'Afternoon Slot 2', 'Evening Slot']" :key="i">
-              <td>{{ period }}</td>
+              <td>{{ userType === 'teacher' ? getPeriodTime(i) : period }}</td>
               <td v-for="(day, j) in 7" :key="j">
                 <button 
                   class="slot-btn" 
@@ -65,6 +65,12 @@
                 >
                   {{ getCourseName(i, j) }}
                 </button>
+                <div 
+                  v-if="tooltipSlot && tooltipSlot.row === i && tooltipSlot.col === j" 
+                  class="slot-tooltip"
+                >
+                  {{ getSlotTime(i, j) }}
+                </div>
               </td>
             </tr>
           </tbody>
@@ -181,7 +187,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="(period, i) in ['Morning Slot 1','Morning Slot 2','Afternoon Slot 1','Afternoon Slot 2','Evening Slot']" :key="i">
-                    <td>{{ period }}</td>
+                    <td>{{ getPeriodTime(i) }}</td>
                     <td v-for="j in 7" :key="j">
                       <button class="slot-btn plan-slot"
                         :class="{ 'plan-selected': isPlanSelected(i, j-1) }"
@@ -229,7 +235,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="(period, i) in ['Morning Slot 1','Morning Slot 2','Afternoon Slot 1','Afternoon Slot 2','Evening Slot']" :key="i">
-                    <td>{{ period }}</td>
+                    <td>{{ getPeriodTime(i) }}</td>
                     <td v-for="j in 7" :key="j">
                       <div class="viewer-slot" :class="{ 'busy': isViewerBusy(i, j-1) }">
                         <span class="dot" v-if="isViewerBusy(i, j-1)"></span>
@@ -271,6 +277,7 @@ const isSelectingTarget = ref(false); // 是否正在选择目标位置
 const isAddingNewCourse = ref(false); // 是否正在添加新课程
 const newCourseSlot = ref(null); // 新课程的位置信息
 const newCourseName = ref(''); // 新课程名称
+const tooltipSlot = ref(null); // 当前显示时间提示的格子 {row,col}
 const sidebarExpanded = ref(false); // 侧边栏默认收起
 const userType = ref(''); // 用户类型
 const showTeacherPlanModal = ref(false); // 教师计划弹窗
@@ -447,8 +454,26 @@ const getPeriodName = (row) => {
   return periods[row] || 'Unknown';
 };
 
+// period行标题：教师显示具体时间
+const getPeriodTime = (row) => {
+  const times = [
+    '08:00 - 08:45',
+    '09:00 - 09:45',
+    '14:00 - 14:45',
+    '15:00 - 15:45',
+    '19:00 - 19:45'
+  ];
+  return times[row] || '';
+};
+
 // 处理课程槽点击
 const handleSlotClick = (row, col) => {
+  // 切换当前slot的时间提示
+  if (tooltipSlot.value && tooltipSlot.value.row === row && tooltipSlot.value.col === col) {
+    tooltipSlot.value = null;
+  } else {
+    tooltipSlot.value = { row, col };
+  }
   if (isSelectingTarget.value) {
     // 正在选择目标位置
     if (isSlotBusy(row, col)) {
@@ -484,6 +509,23 @@ const handleSlotClick = (row, col) => {
     }
   }
 };
+
+// 根据行列返回固定时间文本
+const getSlotTime = (row, col) => {
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const periods = [
+    '08:00 - 08:45', // Morning Slot 1
+    '09:00 - 09:45', // Morning Slot 2
+    '14:00 - 14:45', // Afternoon Slot 1
+    '15:00 - 15:45', // Afternoon Slot 2
+    '19:00 - 19:45'  // Evening Slot
+  ];
+  const d = dayNames[col] || 'Unknown';
+  const t = periods[row] || 'Unknown';
+  return `${d} · ${t}`;
+};
+
+// 保留 getSlotTime 供提示气泡使用
 
 // 取消选择
 const cancelSelection = () => {
@@ -644,6 +686,7 @@ const moveCourseToTarget = async (targetRow, targetCol) => {
       isSelectingTarget.value = false;
       loadSchedule(); // 重新加载课程表
       loadLogs(); // 重新加载日志
+      loadBusySlots(); // 刷新教师忙碌占位（若为教师）
     } else {
       uni.showToast({ title: response.data.error || 'Failed to move course', icon: 'none' });
     }
@@ -1751,6 +1794,24 @@ onLoad(() => {
   background: rgba(220, 53, 69, 0.2);
   border-color: #dc3545;
 }
+
+/* 槽位时间提示样式 */
+.slot-tooltip {
+  position: absolute;
+  margin-top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+td { position: relative; }
 
 /* 弹窗内计划表样式复用 register_class 弹窗风格 */
 .teacher-plan-header h4 {
