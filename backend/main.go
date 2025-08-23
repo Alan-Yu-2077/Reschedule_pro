@@ -20,5 +20,5 @@ func main() {
 	routes.AdminRoutes(r)
 	routes.TeacherRoutes(r)
 
-	r.Run(":8080")
+	r.Run("0.0.0.0:80")
 }
