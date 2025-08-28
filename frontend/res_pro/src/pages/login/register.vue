@@ -46,7 +46,7 @@ const handleRegister = () => {
   }
 
   uni.request({
-    url: 'http://localhost:8080/register',
+          url: 'http://47.108.201.156/register',
     method: 'POST',
     data: {
       userID: userID.value,

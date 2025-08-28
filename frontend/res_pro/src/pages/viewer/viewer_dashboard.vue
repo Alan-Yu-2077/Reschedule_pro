@@ -93,7 +93,7 @@ const nameToId = ref({});
 const loadClasses = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/classes',
+      url: 'http://47.108.201.156/api/schedule/classes',
       method: 'GET',
       header: {
         'Content-Type': 'application/json'
@@ -155,7 +155,7 @@ const loadSchedule = async () => {
   
   try {
     const response = await uni.request({
-      url: `http://localhost:8080/api/schedule/class/${encodeURIComponent(currentClass.value)}/week/${currentWeek.value}`,
+      url: `http://47.108.201.156/api/schedule/class/${encodeURIComponent(currentClass.value)}/week/${currentWeek.value}`,
       method: 'GET'
     });
 
@@ -172,7 +172,7 @@ const loadSchedule = async () => {
 const loadLogs = async () => {
   if (!currentClass.value) return;
   try {
-    const res = await uni.request({ url: 'http://localhost:8080/admin/logs', method: 'GET' });
+    const res = await uni.request({ url: 'http://47.108.201.156/admin/logs', method: 'GET' });
     if (res.statusCode === 200) {
       const clsId = nameToId.value[currentClass.value];
       console.log('Viewer - Raw logs response:', res.data.logs);

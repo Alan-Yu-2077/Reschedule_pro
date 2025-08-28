@@ -296,7 +296,7 @@ const nameToId = ref({});
 const loadClasses = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/classes',
+      url: 'http://47.108.201.156/api/schedule/classes',
       method: 'GET',
       header: {
         'Content-Type': 'application/json'
@@ -373,7 +373,7 @@ const loadSchedule = async () => {
   
   try {
     const response = await uni.request({
-      url: `http://localhost:8080/api/schedule/class/${encodeURIComponent(currentClass.value)}/week/${currentWeek.value}`,
+      url: `http://47.108.201.156/api/schedule/class/${encodeURIComponent(currentClass.value)}/week/${currentWeek.value}`,
       method: 'GET'
     });
 
@@ -396,7 +396,7 @@ const loadSchedule = async () => {
 const loadLogs = async () => {
   if (!currentClass.value) return;
   try {
-    const res = await uni.request({ url: 'http://localhost:8080/admin/logs', method: 'GET' });
+    const res = await uni.request({ url: 'http://47.108.201.156/admin/logs', method: 'GET' });
     if (res.statusCode === 200) {
       const clsId = nameToId.value[currentClass.value];
       console.log('Raw logs response:', res.data.logs);
@@ -566,7 +566,7 @@ const addNewCourse = async (courseName) => {
     console.log('Request data for add course:', requestData);
     
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/add',
+      url: 'http://47.108.201.156/api/schedule/add',
       method: 'POST',
       header: {
         'Content-Type': 'application/json'
@@ -608,7 +608,7 @@ const deleteCourse = async () => {
     console.log('Request data for delete course:', requestData);
     
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/delete',
+      url: 'http://47.108.201.156/api/schedule/delete',
       method: 'DELETE',
       header: {
         'Content-Type': 'application/json'
@@ -672,7 +672,7 @@ const moveCourseToTarget = async (targetRow, targetCol) => {
     console.log('Request data for move course:', requestData);
     
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/move',
+      url: 'http://47.108.201.156/api/schedule/move',
       method: 'POST',
       header: {
         'Content-Type': 'application/json'
@@ -772,7 +772,7 @@ const saveTeacherPlan = async () => {
   }
   try {
     const res = await uni.request({
-      url: 'http://localhost:8080/api/teacher/teach-schedule/overwrite-batch',
+      url: 'http://47.108.201.156/api/teacher/teach-schedule/overwrite-batch',
       method: 'POST',
       header: { 'Content-Type': 'application/json' },
       data: {
@@ -813,7 +813,7 @@ const clearAllTeacherPlans = async () => {
       }
       try {
         const result = await uni.request({
-          url: `http://localhost:8080/api/teacher/teach-schedule/all?teacherId=${encodeURIComponent(userID.value)}`,
+          url: `http://47.108.201.156/api/teacher/teach-schedule/all?teacherId=${encodeURIComponent(userID.value)}`,
           method: 'DELETE',
         });
         if (result.statusCode === 200) {
@@ -871,7 +871,7 @@ const getViewerClassText = (row, col) => {
 const loadViewerBusy = async () => {
   try {
     const res = await uni.request({
-      url: `http://localhost:8080/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${viewerWeek.value}`,
+      url: `http://47.108.201.156/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${viewerWeek.value}`,
       method: 'GET'
     });
     if (res.statusCode === 200) {
@@ -892,7 +892,7 @@ const loadBusySlots = async () => {
   if (userType.value !== 'teacher' || !userID.value) return;
   try {
     const res = await uni.request({
-      url: `http://localhost:8080/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${currentWeek.value}&excludeClassName=${encodeURIComponent(currentClass.value || '')}`,
+      url: `http://47.108.201.156/api/teacher/teach-busy?teacherId=${encodeURIComponent(userID.value)}&week=${currentWeek.value}&excludeClassName=${encodeURIComponent(currentClass.value || '')}`,
       method: 'GET'
     });
     if (res.statusCode === 200) {

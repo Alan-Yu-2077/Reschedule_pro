@@ -254,7 +254,7 @@ const userToDelete = ref(null);
 const loadUsers = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/admin/users',
+      url: 'http://47.108.201.156/admin/users',
       method: 'GET'
     });
     if (response.statusCode === 200) {
@@ -270,7 +270,7 @@ const loadUsers = async () => {
 const loadClasses = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/admin/classes',
+      url: 'http://47.108.201.156/admin/classes',
       method: 'GET'
     });
     if (response.statusCode === 200) {
@@ -286,7 +286,7 @@ const loadClasses = async () => {
 const loadSchedules = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/admin/schedules',
+      url: 'http://47.108.201.156/admin/schedules',
       method: 'GET'
     });
     if (response.statusCode === 200) {
@@ -302,7 +302,7 @@ const loadSchedules = async () => {
 const loadLogs = async () => {
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/admin/logs',
+      url: 'http://47.108.201.156/admin/logs',
       method: 'GET'
     });
     if (response.statusCode === 200) {
@@ -364,7 +364,7 @@ const savePassword = async (user) => {
 
   try {
     const response = await uni.request({
-      url: `http://localhost:8080/admin/users/${user.userID}`,
+      url: `http://47.108.201.156/admin/users/${user.userID}`,
       method: 'PUT',
       data: {
         newUserID: user.newUserID,
@@ -433,7 +433,7 @@ const addUser = async () => {
   
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/admin/users',
+      url: 'http://47.108.201.156/admin/users',
       method: 'POST',
       data: {
         userID: newUser.userID,
@@ -469,7 +469,7 @@ const deleteUser = async () => {
   if (!userToDelete.value) return;
   try {
     const response = await uni.request({
-      url: `http://localhost:8080/admin/users/${userToDelete.value.userID}`,
+      url: `http://47.108.201.156/admin/users/${userToDelete.value.userID}`,
       method: 'DELETE'
     });
     if (response.statusCode === 200) {

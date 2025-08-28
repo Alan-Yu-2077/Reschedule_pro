@@ -28,7 +28,7 @@
     }
   
     uni.request({
-      url: 'http://localhost:8080/login',
+      url: 'http://47.108.201.156/login',
       method: 'POST',
       data: {
         username: username.value,

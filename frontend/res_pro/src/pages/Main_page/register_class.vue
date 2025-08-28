@@ -385,7 +385,7 @@ const submitSchedule = async () => {
 
   try {
     const response = await uni.request({
-      url: 'http://localhost:8080/api/schedule/save',
+      url: 'http://47.108.201.156/api/schedule/save',
       method: 'POST',
       data: submitData,
       header: {

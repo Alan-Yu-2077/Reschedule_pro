@@ -1,0 +1,40 @@
+2025/08/28 16:54:44 Database connected and migrated successfully
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (4 handlers)
+[GIN-debug] HEAD   /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (4 handlers)
+[GIN-debug] Loaded HTML Templates (2): 
+	- 
+	- index.html
+
+[GIN-debug] GET    /                         --> main.main.func1 (4 handlers)
+[GIN-debug] POST   /register                 --> reschedule-program/routes.AuthRoutes.func1 (4 handlers)
+[GIN-debug] POST   /login                    --> reschedule-program/routes.AuthRoutes.func2 (4 handlers)
+[GIN-debug] POST   /api/schedule/save        --> reschedule-program/routes.saveSchedule (4 handlers)
+[GIN-debug] POST   /api/schedule/add         --> reschedule-program/routes.addSchedule (4 handlers)
+[GIN-debug] GET    /api/schedule/class/:className/week/:weekNumber --> reschedule-program/routes.getScheduleByClass (4 handlers)
+[GIN-debug] GET    /api/schedule/classes     --> reschedule-program/routes.getAllClasses (4 handlers)
+[GIN-debug] GET    /api/schedule/logs        --> reschedule-program/routes.getClassLogs (4 handlers)
+[GIN-debug] DELETE /api/schedule/delete      --> reschedule-program/routes.deleteSchedule (4 handlers)
+[GIN-debug] POST   /api/schedule/move        --> reschedule-program/routes.moveSchedule (4 handlers)
+[GIN-debug] GET    /admin/users              --> reschedule-program/routes.adminGetAllUsers (4 handlers)
+[GIN-debug] PUT    /admin/users/:id/password --> reschedule-program/routes.adminUpdateUserPassword (4 handlers)
+[GIN-debug] PUT    /admin/users/:id          --> reschedule-program/routes.adminUpdateUser (4 handlers)
+[GIN-debug] POST   /admin/users              --> reschedule-program/routes.adminAddUser (4 handlers)
+[GIN-debug] DELETE /admin/users/:id          --> reschedule-program/routes.adminDeleteUser (4 handlers)
+[GIN-debug] GET    /admin/classes            --> reschedule-program/routes.adminGetAllClasses (4 handlers)
+[GIN-debug] GET    /admin/courses            --> reschedule-program/routes.adminGetAllCourses (4 handlers)
+[GIN-debug] GET    /admin/schedules          --> reschedule-program/routes.adminGetAllSchedules (4 handlers)
+[GIN-debug] GET    /admin/logs               --> reschedule-program/routes.adminGetAllLogs (4 handlers)
+[GIN-debug] POST   /api/teacher/teach-schedule/overwrite-batch --> reschedule-program/routes.overwriteTeacherTeachScheduleBatch (4 handlers)
+[GIN-debug] DELETE /api/teacher/teach-schedule/all --> reschedule-program/routes.clearAllTeacherPlans (4 handlers)
+[GIN-debug] GET    /api/teacher/teach-busy   --> reschedule-program/routes.getTeacherBusySlots (4 handlers)
+[GIN-debug] GET    /api/teacher/teach-plan   --> reschedule-program/routes.getTeacherPlan (4 handlers)
+[GIN-debug] GET    /api/teacher/classes      --> reschedule-program/routes.getTeacherClasses (4 handlers)
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on 0.0.0.0:80
